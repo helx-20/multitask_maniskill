@@ -43,7 +43,7 @@ from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 from multitask_agent import MultiTaskAgent, init_experts_from_per_task_ckpts
 from task_registry import TASKS, TaskSpec, num_tasks
 
-os.environ["CUDA_VISIBLE_DEVICES"] = '3'
+os.environ["CUDA_VISIBLE_DEVICES"] = '2'
 
 @dataclass
 class Args:
@@ -66,7 +66,7 @@ class Args:
     or empty string disables. Use 'none' or '' at a position to skip a task."""
 
     # ---- env / training ----
-    total_timesteps: int = 400000000
+    total_timesteps: int = 800000000
     learning_rate: float = 1e-4
     num_envs_per_task: int = 512
     num_eval_envs_per_task: int = 32
@@ -101,7 +101,7 @@ class Args:
     max_grad_norm: float = 0.5
     target_kl: float = 0.1
     reward_scale: float = 1.0
-    eval_freq: int = 10
+    eval_freq: int = 100
     save_train_video_freq: Optional[int] = None
     finite_horizon_gae: bool = False
 
@@ -110,10 +110,10 @@ class Args:
     """Coefficient on Switch-Transformer-style load-balancing loss."""
 
     # ---- auxiliary task supervision loss ----
-    task_loss_coef: float = 0.05  # cross-entropy on gate logits to predict task id
+    task_loss_coef: float = 0.005  # cross-entropy on gate logits to predict task id
 
     # ---- freezing schedule ----
-    freeze_expert_steps: int = 100000000  # if >0, keep expert trunks frozen for this many env steps
+    freeze_expert_steps: int = 400000000  # if >0, keep expert trunks frozen for this many env steps
 
     # ---- runtime ----
     batch_size_per_task: int = 0
@@ -569,10 +569,14 @@ def main():
                         # optional auxiliary task supervision: force gate logits to predict task id
                         task_loss = torch.tensor(0.0, device=mb_obs.device)
                         if args.task_loss_coef and args.task_loss_coef > 0.0:
-                            gate_logits = getattr(agent, "_last_actor_gate_logits", None)
-                            if gate_logits is not None:
-                                targets = torch.full((gate_logits.shape[0],), tid, dtype=torch.long, device=gate_logits.device)
-                                task_loss = nn.CrossEntropyLoss()(gate_logits, targets)
+                            actor_gate_logits = getattr(agent, "_last_actor_gate_logits", None)
+                            critic_gate_logits = getattr(agent, "_last_critic_gate_logits", None)
+                            if actor_gate_logits is not None:
+                                targets = torch.full((actor_gate_logits.shape[0],), tid, dtype=torch.long, device=actor_gate_logits.device)
+                                task_loss = nn.CrossEntropyLoss()(actor_gate_logits, targets)
+                            if critic_gate_logits is not None:
+                                targets = torch.full((critic_gate_logits.shape[0],), tid, dtype=torch.long, device=critic_gate_logits.device)
+                                task_loss += args.vf_coef * nn.CrossEntropyLoss()(critic_gate_logits, targets)
 
                             loss = pg_loss - args.ent_coef * ent_loss + v_loss * args.vf_coef \
                                 + args.load_balance_coef * lb_loss + args.task_loss_coef * task_loss
@@ -616,9 +620,9 @@ def main():
             logger.add_scalar("time/rollout_fps",
                               num_tasks() * args.num_envs_per_task * args.num_steps / max(rollout_time, 1e-6),
                               global_step)
-        print(f"  SPS={int(global_step / max(time.time() - start_time, 1e-6))}  "
-              f"pg={last_pg:.4f}  v={last_v:.4f}  kl={last_kl:.4f}  lb={last_lb:.4f}  "
-              f"tl={last_tl:.4f}  rollout={rollout_time:.1f}s  update={update_time:.1f}s")
+        print(f"  SPS={int(global_step / max(time.time() - start_time, 1e-6))} \n "
+              f"pg={last_pg:.4f} \n v={last_v:.4f} \n kl={last_kl:.4f} \n lb={last_lb:.4f} \n "
+              f"tl={last_tl:.4f} \n rollout={rollout_time:.1f}s \n update={update_time:.1f}s")
 
     # ---- final save ----
     if not args.evaluate and args.save_model:

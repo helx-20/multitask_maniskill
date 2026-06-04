@@ -269,6 +269,14 @@ def init_experts_from_per_task_ckpts(agent: MultiTaskAgent,
 
         msgs: list = []
         n_loaded = 0
+        # copy input projection (layer 0 of single-task Sequential) -> Proj_i
+        a_proj = agent.actor_proj.projs[tid]
+        if _copy_linear(a_proj, sd, "actor_mean.0", msgs):
+            n_loaded += 1
+        c_proj = agent.critic_proj.projs[tid]
+        if _copy_linear(c_proj, sd, "critic.0", msgs):
+            n_loaded += 1
+
         # actor
         a_expert = agent.actor_moe.experts[tid]
         for dst_layer, src_idx in [(a_expert.h1, 2), (a_expert.h2, 4),
@@ -282,7 +290,7 @@ def init_experts_from_per_task_ckpts(agent: MultiTaskAgent,
             if _copy_linear(dst_layer, sd, f"critic.{src_idx}", msgs):
                 n_loaded += 1
 
-        print(f"[init_experts] task {tid}: loaded {n_loaded}/8 trunk linears from {path}")
+        print(f"[init_experts] task {tid}: loaded {n_loaded}/10 trunk linears from {path}")
         for m in msgs:
             print(m)
 
