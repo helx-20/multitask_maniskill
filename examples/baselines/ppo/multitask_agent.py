@@ -2,21 +2,21 @@
 
 Architecture (mirrored for actor and critic):
 
-    obs_i (obs_dim_i)
-       │
-       ▼
-    Proj_i (Linear obs_dim_i → 256, Tanh)         per-task; routed by task_id
-       │
-       ▼  h ∈ R^256
-       ├── Gate(h) ──► softmax weights (1, 4)
-       │
-       ├── Expert_0(h) ─► o_0          experts share hidden dim 256;
-       ├── Expert_1(h) ─► o_1          trunk = Linear(256→512→512→256→out)
-       ├── Expert_2(h) ─► o_2          can be warm-started from per-task ckpts
-       └── Expert_3(h) ─► o_3          (drop first layer, copy layers 2..5)
-                  │
-                  ▼
-            Σ w_i · o_i  ──► action_mean (8) / V(s) (1)
+     obs_i (obs_dim_i)  -- padded to max_obs_dim
+         │
+         ▼
+     (zero-pad to max_obs_dim) → shared Gate + Experts
+         │
+         ▼  experts each contain an input projection (max_obs_dim → 256)
+         ├── Gate(h) ──► softmax weights (1, K)  (shared by actor & critic)
+         │
+         ├── Expert_0(obs) ─► o_0          experts share hidden dim 256;
+         ├── Expert_1(obs) ─► o_1          trunk = Linear(256→512→512→256→out)
+         ├── Expert_2(obs) ─► o_2          can be warm-started from per-task ckpts
+         └── Expert_3(obs) ─► o_3          (drop first layer, copy layers 2..5)
+                        │
+                        ▼
+                Σ w_i · o_i  ──► action_mean (8) / V(s) (1)
 
 actor_logstd is a global (1, 8) Parameter, not per-task — keeps PPO simple.
 
@@ -39,7 +39,7 @@ HIDDEN = 256
 EXPERT_TRUNK = (256, 512, 512, 256)
 ACTION_OUT_STD = 0.01 * np.sqrt(2)
 NUM_EXPERTS_DEFAULT = 4
-GATE_HIDDEN = 64
+GATE_HIDDEN = 256
 
 
 def layer_init(layer: nn.Linear, std: float = np.sqrt(2), bias_const: float = 0.0) -> nn.Linear:
@@ -48,34 +48,46 @@ def layer_init(layer: nn.Linear, std: float = np.sqrt(2), bias_const: float = 0.
     return layer
 
 
-class TaskProjection(nn.Module):
-    """Per-task input projection. Each task has its own Linear obs_dim_i → HIDDEN."""
+class Gate(nn.Module):
+    """Shared gate network producing soft weights over experts.
 
-    def __init__(self, obs_dims: Sequence[int], hidden: int = HIDDEN):
+    Now accepts the padded observation directly as input (shape: (B, input_dim)).
+    """
+
+    def __init__(self, input_dim: int = HIDDEN, gate_hidden: int = GATE_HIDDEN, num_experts: int = NUM_EXPERTS_DEFAULT):
         super().__init__()
-        self.projs = nn.ModuleList([layer_init(nn.Linear(d, hidden)) for d in obs_dims])
+        self.net = nn.Sequential(
+            layer_init(nn.Linear(input_dim, gate_hidden)),
+            nn.Tanh(),
+            layer_init(nn.Linear(gate_hidden, num_experts), std=0.01),
+        )
 
-    def forward(self, obs: torch.Tensor, task_id: int) -> torch.Tensor:
-        return torch.tanh(self.projs[task_id](obs))
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        logits = self.net(x)
+        w = F.softmax(logits, dim=-1)
+        return w, logits
 
 
 class Expert(nn.Module):
-    """One expert's trunk: 4 hidden Linears + output Linear, Tanh activations.
+    """One expert's trunk: input projection (max_obs_dim -> HIDDEN) + 3 hidden Linears + output.
 
-    Layout mirrors the single-task `ppo.Agent` so that the saved-checkpoint
-    weights can be warm-loaded by slicing off the input layer (layer index 0
-    in the original Sequential).
+    The per-task projection previously lived outside the expert. We merge it
+    into the expert as `in_proj`. Inputs smaller than the configured
+    `input_dim` should be padded externally (see MultiTaskAgent).
     """
 
-    def __init__(self, out_dim: int, out_std: float = np.sqrt(2)):
+    def __init__(self, input_dim: int, out_dim: int, out_std: float = np.sqrt(2)):
         super().__init__()
-        # layers 2,4,6,8 of original ppo Sequential → 4 hidden Linears here
+        # input projection: max_obs_dim -> EXPERT_TRUNK[0] (HIDDEN)
+        self.in_proj = layer_init(nn.Linear(input_dim, EXPERT_TRUNK[0]))
         self.h1 = layer_init(nn.Linear(EXPERT_TRUNK[0], EXPERT_TRUNK[1]))
         self.h2 = layer_init(nn.Linear(EXPERT_TRUNK[1], EXPERT_TRUNK[2]))
         self.h3 = layer_init(nn.Linear(EXPERT_TRUNK[2], EXPERT_TRUNK[3]))
         self.out = layer_init(nn.Linear(EXPERT_TRUNK[3], out_dim), std=out_std)
 
-    def forward(self, h: torch.Tensor) -> torch.Tensor:
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        # obs: (B, input_dim)
+        h = torch.tanh(self.in_proj(obs))
         h = torch.tanh(self.h1(h))
         h = torch.tanh(self.h2(h))
         h = torch.tanh(self.h3(h))
@@ -83,25 +95,29 @@ class Expert(nn.Module):
 
 
 class MoEHead(nn.Module):
-    """Bank of N experts + learned soft gate over them."""
+    """Bank of N experts + optional external/shared gate.
 
-    def __init__(self, out_dim: int, num_experts: int = NUM_EXPERTS_DEFAULT,
-                 hidden: int = HIDDEN, gate_hidden: int = GATE_HIDDEN,
+    If `gate_module` is provided we use that for gate logits/weights. Otherwise
+    we build an internal gate identical to the previous implementation.
+    """
+
+    def __init__(self, input_dim: int, out_dim: int, num_experts: int = NUM_EXPERTS_DEFAULT,
+                 gate_module: Optional[nn.Module] = None, gate_hidden: int = GATE_HIDDEN,
                  expert_out_std: float = np.sqrt(2)):
         super().__init__()
         self.num_experts = num_experts
-        self.experts = nn.ModuleList([Expert(out_dim, out_std=expert_out_std) for _ in range(num_experts)])
-        self.gate = nn.Sequential(
-            layer_init(nn.Linear(hidden, gate_hidden)),
-            nn.Tanh(),
-            layer_init(nn.Linear(gate_hidden, num_experts), std=0.01),
-        )
+        self.experts = nn.ModuleList([Expert(input_dim, out_dim, out_std=expert_out_std) for _ in range(num_experts)])
+        if gate_module is None:
+            self.gate = Gate(input_dim=input_dim, gate_hidden=gate_hidden, num_experts=num_experts)
+        else:
+            self.gate = gate_module
 
-    def forward(self, h: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        # h: (B, HIDDEN)
-        gate_logits = self.gate(h)                          # (B, K)
-        gate_w = F.softmax(gate_logits, dim=-1)             # (B, K)
-        expert_outs = torch.stack([e(h) for e in self.experts], dim=1)  # (B, K, out)
+    def forward(self, obs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        # obs: (B, input_dim)
+        # get per-expert outputs
+        expert_outs = torch.stack([e(obs) for e in self.experts], dim=1)  # (B, K, out)
+        # gate should take the padded observation directly as input
+        gate_w, gate_logits = self.gate(obs)  # (B, K), (B, K)
         out = (gate_w.unsqueeze(-1) * expert_outs).sum(dim=1)           # (B, out)
         return out, gate_w, gate_logits
 
@@ -121,12 +137,19 @@ class MultiTaskAgent(nn.Module):
         self.num_experts = num_experts
         self.action_dim = action_dim
 
-        self.actor_proj = TaskProjection(obs_dims)
-        self.critic_proj = TaskProjection(obs_dims)
-        self.actor_moe = MoEHead(out_dim=action_dim, num_experts=num_experts,
-                                 expert_out_std=ACTION_OUT_STD)
-        self.critic_moe = MoEHead(out_dim=1, num_experts=num_experts,
-                                  expert_out_std=1.0)
+        # unify observation dimension to the maximum across tasks and pad
+        # smaller observations with zeros at runtime
+        self.input_dim = int(max(obs_dims))
+        # shared gate used by both actor and critic (takes padded obs as input)
+        self.gate = Gate(input_dim=self.input_dim, gate_hidden=GATE_HIDDEN, num_experts=num_experts)
+        # MoE heads now accept raw (padded) obs and each expert contains its own
+        # input projection (obs -> hidden). Actor and critic share the same gate.
+        self.actor_moe = MoEHead(input_dim=self.input_dim, out_dim=action_dim,
+                     num_experts=num_experts, gate_module=self.gate,
+                     expert_out_std=ACTION_OUT_STD)
+        self.critic_moe = MoEHead(input_dim=self.input_dim, out_dim=1,
+                      num_experts=num_experts, gate_module=self.gate,
+                      expert_out_std=1.0)
         self.actor_logstd = nn.Parameter(torch.ones(1, action_dim) * -0.5)
 
         # Last forward's gate weights, for load-balancing logging/loss.
@@ -141,22 +164,24 @@ class MultiTaskAgent(nn.Module):
     # tasks; the update loop also slices minibatches per task. This keeps the
     # implementation simple and fast (no per-sample dispatch).
 
-    def _hidden_actor(self, obs: torch.Tensor, task_id: int) -> torch.Tensor:
-        return self.actor_proj(obs, task_id)
+    def _pad_obs(self, obs: torch.Tensor) -> torch.Tensor:
+        # obs: (B, obs_dim) where obs_dim <= self.input_dim
+        if obs.shape[-1] == self.input_dim:
+            return obs
+        # pad zeros on the right
+        pad = obs.new_zeros((*obs.shape[:-1], self.input_dim - obs.shape[-1]))
+        return torch.cat([obs, pad], dim=-1)
 
-    def _hidden_critic(self, obs: torch.Tensor, task_id: int) -> torch.Tensor:
-        return self.critic_proj(obs, task_id)
-
-    def get_value(self, obs: torch.Tensor, task_id: int) -> torch.Tensor:
-        h = self._hidden_critic(obs, task_id)
-        v, gate, gate_logits = self.critic_moe(h)
+    def get_value(self, obs: torch.Tensor) -> torch.Tensor:
+        x = self._pad_obs(obs)
+        v, gate, gate_logits = self.critic_moe(x)
         self._last_critic_gate = gate
         self._last_critic_gate_logits = gate_logits
         return v
 
-    def get_action(self, obs: torch.Tensor, task_id: int, deterministic: bool = False) -> torch.Tensor:
-        h = self._hidden_actor(obs, task_id)
-        mean, gate, gate_logits = self.actor_moe(h)
+    def get_action(self, obs: torch.Tensor, deterministic: bool = False) -> torch.Tensor:
+        x = self._pad_obs(obs)
+        mean, gate, gate_logits = self.actor_moe(x)
         self._last_actor_gate = gate
         self._last_actor_gate_logits = gate_logits
         if deterministic:
@@ -164,13 +189,12 @@ class MultiTaskAgent(nn.Module):
         std = torch.exp(self.actor_logstd.expand_as(mean))
         return Normal(mean, std).sample()
 
-    def get_action_and_value(self, obs: torch.Tensor, task_id: int,
+    def get_action_and_value(self, obs: torch.Tensor,
                              action: Optional[torch.Tensor] = None
                              ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        h_a = self._hidden_actor(obs, task_id)
-        h_c = self._hidden_critic(obs, task_id)
-        mean, gate_a, gate_a_logits = self.actor_moe(h_a)
-        value, gate_c, gate_c_logits = self.critic_moe(h_c)
+        x = self._pad_obs(obs)
+        mean, gate_a, gate_a_logits = self.actor_moe(x)
+        value, gate_c, gate_c_logits = self.critic_moe(x)
         self._last_actor_gate = gate_a
         self._last_critic_gate = gate_c
         self._last_actor_gate_logits = gate_a_logits
@@ -225,13 +249,27 @@ def _copy_linear(target: nn.Linear, src_sd: Dict[str, torch.Tensor],
         msgs.append(f"  missing {w_key} / {b_key}")
         return False
     sw, sb = src_sd[w_key], src_sd[b_key]
-    if sw.shape != target.weight.shape or sb.shape != target.bias.shape:
-        msgs.append(f"  shape mismatch at {src_prefix}: src {tuple(sw.shape)} vs "
-                    f"dst {tuple(target.weight.shape)}")
-        return False
-    with torch.no_grad():
-        target.weight.copy_(sw)
-        target.bias.copy_(sb)
+    # allow copying into a larger target by zero-padding the src on the
+    # right (useful when warm-starting input projections into a larger
+    # unified input_dim). Exact matches are copied directly.
+    tw_shape = tuple(target.weight.shape)
+    tb_shape = tuple(target.bias.shape)
+    if sw.shape == target.weight.shape and sb.shape == target.bias.shape:
+        with torch.no_grad():
+            target.weight.copy_(sw)
+            target.bias.copy_(sb)
+        return True
+    # allow src with smaller in_features (sw: out x in_src) to be copied into
+    # target (out x in_tgt) when out matches. Pad remaining columns with 0.
+    if sw.ndim == 2 and sw.shape[0] == target.weight.shape[0] and sw.shape[1] < target.weight.shape[1] and sb.shape == target.bias.shape:
+        neww = torch.zeros_like(target.weight)
+        neww[:, :sw.shape[1]] = sw
+        with torch.no_grad():
+            target.weight.copy_(neww)
+            target.bias.copy_(sb)
+        return True
+    msgs.append(f"  shape mismatch at {src_prefix}: src {tuple(sw.shape)} vs dst {tw_shape}")
+    return False
     return True
 
 
@@ -243,7 +281,7 @@ def init_experts_from_per_task_ckpts(agent: MultiTaskAgent,
     The single-task `Agent` in ppo.py has actor_mean and critic as
     nn.Sequential with this layer order:
 
-        0:  Linear(obs_dim, 256)    ←  DROPPED  (replaced by Proj_i)
+        0:  Linear(obs_dim, 256)
         1:  Tanh
         2:  Linear(256, 512)        ─┐
         3:  Tanh                     │
@@ -254,7 +292,7 @@ def init_experts_from_per_task_ckpts(agent: MultiTaskAgent,
         8:  Linear(256, out_dim)    ─┘
         (no tanh on output)
 
-    We copy 2→h1, 4→h2, 6→h3, 8→out. Mismatches are logged and skipped.
+    We copy 0->proj, 2→h1, 4→h2, 6→h3, 8→out. Mismatches are logged and skipped.
     Pass None at index i to skip that task.
     """
     for tid, path in enumerate(ckpt_paths):
@@ -269,11 +307,11 @@ def init_experts_from_per_task_ckpts(agent: MultiTaskAgent,
 
         msgs: list = []
         n_loaded = 0
-        # copy input projection (layer 0 of single-task Sequential) -> Proj_i
-        a_proj = agent.actor_proj.projs[tid]
+        # copy input projection (layer 0 of single-task Sequential) -> Expert.in_proj
+        a_proj = agent.actor_moe.experts[tid].in_proj
         if _copy_linear(a_proj, sd, "actor_mean.0", msgs):
             n_loaded += 1
-        c_proj = agent.critic_proj.projs[tid]
+        c_proj = agent.critic_moe.experts[tid].in_proj
         if _copy_linear(c_proj, sd, "critic.0", msgs):
             n_loaded += 1
 

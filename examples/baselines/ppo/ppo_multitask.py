@@ -43,7 +43,7 @@ from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 from multitask_agent import MultiTaskAgent, init_experts_from_per_task_ckpts
 from task_registry import TASKS, TaskSpec, num_tasks
 
-os.environ["CUDA_VISIBLE_DEVICES"] = '2'
+os.environ["CUDA_VISIBLE_DEVICES"] = '1'
 
 @dataclass
 class Args:
@@ -57,7 +57,7 @@ class Args:
     capture_video: bool = False
     save_model: bool = True
     evaluate: bool = False
-    checkpoint: Optional[str] = None
+    checkpoint: Optional[str] = None # "examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780586562/multitask_final_ckpt.pt"
     """Multi-task ckpt to load (full MultiTaskAgent state_dict)."""
 
     # ---- expert warm-start ----
@@ -66,7 +66,7 @@ class Args:
     or empty string disables. Use 'none' or '' at a position to skip a task."""
 
     # ---- env / training ----
-    total_timesteps: int = 800000000
+    total_timesteps: int = 100000000
     learning_rate: float = 1e-4
     num_envs_per_task: int = 512
     num_eval_envs_per_task: int = 32
@@ -101,19 +101,19 @@ class Args:
     max_grad_norm: float = 0.5
     target_kl: float = 0.1
     reward_scale: float = 1.0
-    eval_freq: int = 100
+    eval_freq: int = 20
     save_train_video_freq: Optional[int] = None
     finite_horizon_gae: bool = False
 
     # ---- MoE auxiliary ----
-    load_balance_coef: float = 0.01
+    load_balance_coef: float = 0.0 # 0.01
     """Coefficient on Switch-Transformer-style load-balancing loss."""
 
     # ---- auxiliary task supervision loss ----
-    task_loss_coef: float = 0.005  # cross-entropy on gate logits to predict task id
+    task_loss_coef: float = 0.1  # cross-entropy on gate logits to predict task id
 
     # ---- freezing schedule ----
-    freeze_expert_steps: int = 400000000  # if >0, keep expert trunks frozen for this many env steps
+    freeze_expert_steps: int = 30000000  # if >0, keep expert trunks frozen for this many env steps
 
     # ---- runtime ----
     batch_size_per_task: int = 0
@@ -322,9 +322,9 @@ def main():
         for ex in agent.actor_moe.experts:
             for p in ex.parameters():
                 p.requires_grad = req
-        for ex in agent.critic_moe.experts:
-            for p in ex.parameters():
-                p.requires_grad = req
+        # for ex in agent.critic_moe.experts:
+        #     for p in ex.parameters():
+        #         p.requires_grad = req
 
     # optionally freeze expert trunks initially (train only Proj_i and gate)
     experts_frozen = False
@@ -411,7 +411,7 @@ def main():
                                           args.disturb_force_mag * spec.force_mag,
                                           args.disturb_prob,
                                           args.disturb_xy_only, device)
-                        action = agent.get_action(eval_obs, tid, deterministic=True)
+                        action = agent.get_action(eval_obs, deterministic=True)
                         lo, hi = action_lo_hi[tid]
                         eval_obs, _, _, _, eval_infos = eval_vec.step(torch.clamp(action, lo, hi))
                     if "final_info" in eval_infos:
@@ -458,7 +458,7 @@ def main():
                 buf["obs"][step] = next_obs
                 buf["dones"][step] = next_done
                 with torch.no_grad():
-                    action, logprob, _, value = agent.get_action_and_value(next_obs, tid)
+                    action, logprob, _, value = agent.get_action_and_value(next_obs)
                     buf["values"][step] = value.flatten()
                 buf["actions"][step] = action
                 buf["logprobs"][step] = logprob
@@ -481,7 +481,7 @@ def main():
                     with torch.no_grad():
                         idxs = torch.arange(n_env, device=device)[done_mask]
                         buf["final_values"][step, idxs] = agent.get_value(
-                            infos["final_observation"][done_mask], tid
+                            infos["final_observation"][done_mask]
                         ).view(-1)
             next_obs_list[tid] = next_obs
             next_done_list[tid] = next_done
@@ -492,7 +492,7 @@ def main():
             per_task_flat = []
             for tid, vec in enumerate(train_vecs):
                 buf = storage[tid]
-                next_value = agent.get_value(next_obs_list[tid], tid).reshape(1, -1)
+                next_value = agent.get_value(next_obs_list[tid]).reshape(1, -1)
                 adv, ret = compute_gae(
                     buf["rewards"], buf["values"], buf["dones"], buf["final_values"],
                     next_value, next_done_list[tid],
@@ -535,7 +535,7 @@ def main():
                     mb_inds = inds[start:start + mb_size]
                     mb_obs = f["obs"][mb_inds]
                     mb_act = f["actions"][mb_inds]
-                    _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, tid, mb_act)
+                    _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, mb_act)
                     logratio = newlogprob - f["logprobs"][mb_inds]
                     ratio = logratio.exp()
                     with torch.no_grad():
