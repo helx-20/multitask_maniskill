@@ -107,9 +107,12 @@ def build_split(data_dir: str, rng: np.random.Generator | None = None,
     pos_files = collect_npy_files(os.path.join(data_dir, "raw", "positive"))
     neg_files = collect_npy_files(os.path.join(data_dir, "raw", "negative"))
     print(f"[stage1] pos files: {len(pos_files)} | neg files: {len(neg_files)}")
-    pos_eps = load_episodes(pos_files) if pos_files else []
-    neg_eps = load_episodes(neg_files) if neg_files else []
+    pos_eps, pos_ep_num = load_episodes(pos_files) if pos_files else []
+    neg_eps, neg_ep_num = load_episodes(neg_files) if neg_files else []
     print(f"[stage1] pos episodes: {len(pos_eps)} | neg episodes: {len(neg_eps)}")
+    print(f"[stage1] pos episode num by task: {pos_ep_num}")
+    print(f"[stage1] neg episode num by task: {neg_ep_num}")
+    import pdb; pdb.set_trace()
 
     per_task_pos = flatten_episodes(pos_eps)
     per_task_neg = flatten_episodes(neg_eps)

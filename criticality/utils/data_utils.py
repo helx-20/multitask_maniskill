@@ -89,15 +89,18 @@ def flatten_episodes(
     return out
 
 
-def load_episodes(path_or_paths) -> List[dict]:
+def load_episodes(path_or_paths):
     """Load one or more .npy files of episode dicts and concatenate."""
     if isinstance(path_or_paths, str):
         path_or_paths = [path_or_paths]
     out: List[dict] = []
+    ep_num = {'0': 0, '1': 0, '2': 0, '3': 0}
     for p in path_or_paths:
+        task_id = p.split('/')[-1].split('_')[1][-1]
         try:
             data = np.load(p, allow_pickle=True)
             out.extend(list(data))
+            ep_num[task_id] += len(list(data))
         except Exception:
             import pickle
             with open(p, "rb") as f:
@@ -108,4 +111,4 @@ def load_episodes(path_or_paths) -> List[dict]:
                 out.extend(data)
             else:
                 out.append(data)
-    return out
+    return out, ep_num

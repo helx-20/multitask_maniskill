@@ -32,7 +32,7 @@ def _resolve_task(args):
 
 
 def _load_agent(args, env, device):
-    """Load either a single-task `Agent` (default) or `MultiTaskAgent`."""
+    """Load a single-task `Agent` (default)`."""
     from examples.baselines.ppo.multitask_agent import MultiTaskAgent
     # we need obs_dims for all tasks; probe missing ones at runtime via env
     spec = _resolve_task(args)
@@ -88,8 +88,10 @@ def main(args):
         
         start_time = time.time()
 
-        for ep in range(args.n):
-            obs, info = env.reset(seed=args.worker_id * args.n + ep + spec.task_id)
+        # if task_id == 1 (pick), increase episodes because crash rate is very low
+        n_episodes = args.n * 10 if spec.task_id == 1 else args.n
+        for ep in range(n_episodes):
+            obs, info = env.reset(seed=args.worker_id * n_episodes + ep + spec.task_id)
             ep_obs, ep_acts, ep_weights, ep_log_probs = [], [], [], []
             success_once = False
             done = False
