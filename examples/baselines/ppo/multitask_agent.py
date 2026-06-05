@@ -150,7 +150,7 @@ class MultiTaskAgent(nn.Module):
         self.critic_moe = MoEHead(input_dim=self.input_dim, out_dim=1,
                       num_experts=num_experts, gate_module=self.gate,
                       expert_out_std=1.0)
-        self.actor_logstd = nn.Parameter(torch.ones(1, action_dim) * -0.5)
+        self.actor_logstd = nn.Parameter(torch.ones(1, action_dim) * -1.5)
 
         # Last forward's gate weights, for load-balancing logging/loss.
         self._last_actor_gate: Optional[torch.Tensor] = None

@@ -43,7 +43,7 @@ from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 from multitask_agent import MultiTaskAgent, init_experts_from_per_task_ckpts
 from task_registry import TASKS, TaskSpec, num_tasks
 
-os.environ["CUDA_VISIBLE_DEVICES"] = '1'
+os.environ["CUDA_VISIBLE_DEVICES"] = '3'
 
 @dataclass
 class Args:
@@ -57,17 +57,17 @@ class Args:
     capture_video: bool = False
     save_model: bool = True
     evaluate: bool = False
-    checkpoint: Optional[str] = None # "examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780586562/multitask_final_ckpt.pt"
+    checkpoint: Optional[str] = "/home/linxuan/Embodied/multitask_maniskill/examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780626957/multitask_final_ckpt.pt"
     """Multi-task ckpt to load (full MultiTaskAgent state_dict)."""
 
     # ---- expert warm-start ----
-    init_expert_ckpts: List[str] = field(default_factory=lambda: ['/home/linxuan/Embodied/push_cube/examples/baselines/ppo/runs/PushCube-v1__ppo__1__1780301489/final_ckpt.pt', '/home/linxuan/Embodied/pick_cube/examples/baselines/ppo/runs/PickCube-v1__ppo__1__1780321332/final_ckpt.pt', '/home/linxuan/Embodied/stack_cube/examples/baselines/ppo/runs/StackCube-v1__ppo__1__1780033432/final_ckpt.pt', '/home/linxuan/Embodied/insert_tube/examples/baselines/ppo/runs/PegInsertionSide-v1__ppo__1__1780488894/final_ckpt.pt']) # field(default_factory=list)
+    init_expert_ckpts: List[str] = field(default_factory=list) # field(default_factory=lambda: ['/home/linxuan/Embodied/push_cube/examples/baselines/ppo/runs/PushCube-v1__ppo__1__1780301489/final_ckpt.pt', '/home/linxuan/Embodied/pick_cube/examples/baselines/ppo/runs/PickCube-v1__ppo__1__1780321332/final_ckpt.pt', '/home/linxuan/Embodied/stack_cube/examples/baselines/ppo/runs/StackCube-v1__ppo__1__1780033432/final_ckpt.pt', '/home/linxuan/Embodied/insert_tube/examples/baselines/ppo/runs/PegInsertionSide-v1__ppo__1__1780488894/final_ckpt.pt'])
     """One path per task in TASKS order (push, pick, stack, peg). Empty list
     or empty string disables. Use 'none' or '' at a position to skip a task."""
 
     # ---- env / training ----
     total_timesteps: int = 100000000
-    learning_rate: float = 1e-4
+    learning_rate: float = 1e-6
     num_envs_per_task: int = 512
     num_eval_envs_per_task: int = 32
     partial_reset: bool = True
@@ -113,7 +113,8 @@ class Args:
     task_loss_coef: float = 0.1  # cross-entropy on gate logits to predict task id
 
     # ---- freezing schedule ----
-    freeze_expert_steps: int = 30000000  # if >0, keep expert trunks frozen for this many env steps
+    freeze_expert_steps: int = 0  # if >0, keep expert trunks frozen for this many env steps
+    freeze_gate_steps: int = 100000000  # if >0, keep gate frozen for this many env steps
 
     # ---- runtime ----
     batch_size_per_task: int = 0
@@ -333,6 +334,21 @@ def main():
         experts_frozen = True
         print(f"[*] Experts frozen for first {args.freeze_expert_steps} env steps")
 
+    def set_gate_requires_grad(agent, req: bool):
+        for p in agent.actor_moe.gate.parameters():
+            p.requires_grad = req
+        for p in agent.critic_moe.gate.parameters():
+            p.requires_grad = req
+        for p in agent.gate.parameters():
+            p.requires_grad = req
+
+    # optionally freeze gate initially
+    gate_frozen = False
+    if getattr(args, "freeze_gate_steps", 0) > 0:
+        set_gate_requires_grad(agent, False)
+        gate_frozen = True
+        print(f"[*] Gate frozen for first {args.freeze_gate_steps} env steps")
+
     optimizer = optim.Adam([p for p in agent.parameters() if p.requires_grad], lr=args.learning_rate, eps=1e-5)
 
     # ---- logger ----
@@ -516,6 +532,12 @@ def main():
             optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
             experts_frozen = False
             print(f"[*] Unfroze expert trunks at global_step={global_step}; optimizer rebuilt to include all params")
+
+        if gate_frozen and global_step >= args.freeze_gate_steps:
+            set_gate_requires_grad(agent, True)
+            optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
+            gate_frozen = False
+            print(f"[*] Unfroze gate at global_step={global_step}; optimizer rebuilt to include all params")
 
         agent.train()
         update_time = time.time()
