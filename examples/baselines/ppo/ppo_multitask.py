@@ -20,7 +20,7 @@ Usage:
 from __future__ import annotations
 
 from collections import defaultdict
-import os
+import os, sys
 import random
 import time
 from dataclasses import dataclass, field
@@ -39,6 +39,10 @@ from mani_skill.utils import gym_utils
 from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
+
+ROOT = os.path.dirname(os.path.abspath(__file__))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
 from multitask_agent import MultiTaskAgent, init_experts_from_per_task_ckpts
 from task_registry import TASKS, TaskSpec, num_tasks
