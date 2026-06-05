@@ -11,7 +11,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from examples.baselines.ppo.ppo import Agent
 from examples.baselines.ppo.task_registry import TASKS, by_env_id, by_task_id, num_tasks, obs_dims as registry_obs_dims
 from criticality.test.maniskill_ordinary_nade import make_env
 
