@@ -67,25 +67,14 @@ class ManiSkillOrdinaryNADE(gym.Wrapper):
         self.force_dim = spec.force_dim
 
         # ---- criticality model ----
-        use_single = getattr(args, "criticality_use_single_task", False)
-        if use_single:
-            from criticality.utils.criticality_model import SimpleClassifier
-            # SimpleClassifier expects obs_dim + 3 features (legacy collectors).
-            self._single_task_model = True
-            self._model_input_dim = (spec.obs_dim or 48) + 3
-            self.criticality_model = SimpleClassifier(
-                input_dim=self._model_input_dim,
-                hidden=getattr(args, "hidden", 256),
-                hidden_layer=getattr(args, "hidden_layer", 3),
-            ).to(self.device)
-        else:
-            from criticality.utils.multitask_criticality_model import MultiTaskClassifier
-            self._single_task_model = False
-            obs_dims = [s.obs_dim or 1 for s in TASKS]
-            force_dims = [s.force_dim for s in TASKS]
-            self.criticality_model = MultiTaskClassifier(
-                obs_dims=obs_dims, force_dims=force_dims,
-            ).to(self.device)
+        from criticality.utils.criticality_model import SimpleClassifier
+        # SimpleClassifier expects obs_dim + 3 features (legacy collectors).
+        self._model_input_dim = 48 + 3
+        self.criticality_model = SimpleClassifier(
+            input_dim=self._model_input_dim,
+            hidden=getattr(args, "hidden", 256),
+            hidden_layer=getattr(args, "hidden_layer", 3),
+        ).to(self.device)
 
         if getattr(args, "criticality_ckpt", None):
             print(f"loading criticality ckpt from {args.criticality_ckpt}")
@@ -171,21 +160,16 @@ class ManiSkillOrdinaryNADE(gym.Wrapper):
         """Enumerate every (force_dim)-D candidate force at the current obs."""
         cur_obs = torch.tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
         cur_obs = cur_obs.repeat(self.total_actions, 1)  # (G^fd, obs_dim_i)
-        if self._single_task_model:
-            # Legacy SimpleClassifier expected obs + 3-d force. If this is a
-            # 2D-force task, pad the trailing column with zeros.
-            if self.force_dim == 2:
-                fg = torch.cat([self.force_grid,
-                                torch.zeros(self.total_actions, 1, device=self.device)], dim=1)
-            else:
-                fg = self.force_grid
-            cur_input = torch.cat([cur_obs, fg], dim=1)
-            with torch.no_grad():
-                outputs = self.criticality_model(cur_input)
+        # Legacy SimpleClassifier expected obs + 3-d force. If this is a
+        # 2D-force task, pad the trailing column with zeros.
+        if self.force_dim == 2:
+            fg = torch.cat([self.force_grid,
+                            torch.zeros(self.total_actions, 1, device=self.device)], dim=1)
         else:
-            cur_input = torch.cat([cur_obs, self.force_grid], dim=1)  # (G, od+fd)
-            with torch.no_grad():
-                outputs = self.criticality_model(cur_input, self.spec.task_id)
+            fg = self.force_grid
+        cur_input = torch.cat([cur_obs, fg], dim=1)
+        with torch.no_grad():
+            outputs = self.criticality_model(cur_input)
         return outputs
 
     def idx_to_action(self, action_idx) -> np.ndarray:

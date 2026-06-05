@@ -9,9 +9,6 @@ four tasks; each episode dict carries `task_id`). The trainer:
     represented in every split.
   - Caches the split into `<data_dir>/train_mt.pkl` / `val_mt.pkl` /
     `test_mt.pkl` after the first build.
-  - Builds one DataLoader per task per split and iterates them round-robin
-    per epoch, routing each batch through the right Proj_i of
-    `MultiTaskClassifier`.
 
 Backward-compat: episodes without `task_id` are assumed task_id=0. To train
 in single-task mode just collect into one bucket — the same code path
@@ -37,7 +34,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from criticality.utils.multitask_criticality_model import MultiTaskClassifier
+from criticality.utils.criticality_model import SimpleClassifier
 from criticality.utils.data_utils import collect_npy_files, flatten_episodes, load_episodes
 from examples.baselines.ppo.task_registry import TASKS, num_tasks, by_task_id
 
@@ -101,7 +98,7 @@ def _split_one_task(X, y, ratios, rng, neg_train_keep_frac):
 
 
 def build_split(data_dir: str, rng: np.random.Generator | None = None,
-                ratios=(0.8, 0.1, 0.1), neg_train_keep_frac: float = 0.1):
+                ratios=(0.8, 0.1, 0.1), neg_train_keep_frac: float = 0.2):
     """Load all episodes, group by task_id, stratified per-task split.
 
     Returns
@@ -177,7 +174,7 @@ def evaluate(model, loaders: dict, device):
             t_total = t_correct = t_tp = t_fp = t_fn = 0
             for xb, yb in loader:
                 xb = xb.to(device); yb = yb.to(device)
-                logits = model(xb, tid)
+                logits = model(xb)
                 probs = torch.softmax(logits, dim=1)[:, 1]
                 preds = logits.argmax(dim=1)
                 t_total += yb.size(0); t_correct += (preds == yb).sum().item()
@@ -263,12 +260,12 @@ def train(args):
         force_dims.append(spec.force_dim)
     print(f"[stage1] model obs_dims={obs_dims} force_dims={force_dims}")
 
-    model = MultiTaskClassifier(obs_dims=obs_dims, force_dims=force_dims).to(device)
+    model = SimpleClassifier(input_dim=51, hidden=args.hidden, hidden_layer=args.hidden_layer).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     os.makedirs(args.save_dir, exist_ok=True)
-    save_path = os.path.join(args.save_dir, f"multitask_criticality_best_{args.model_idx}.pt")
+    save_path = os.path.join(args.save_dir, f"stage1_criticality_best_{args.model_idx}.pt")
 
     best_auc = 0.0
     for epoch in range(1, args.epochs + 1):
@@ -287,10 +284,8 @@ def train(args):
                     iters[tid] = iter(train_loaders[tid])
                     xb, yb = next(iters[tid])
                 xb = xb.to(device); yb = yb.to(device)
-                logits = model(xb, tid)
+                logits = model(xb)
                 loss = criterion(logits, yb)
-                if args.load_balance_coef > 0:
-                    loss = loss + args.load_balance_coef * model.gate_load_balance_loss()
                 optimizer.zero_grad(); loss.backward(); optimizer.step()
                 preds = logits.argmax(dim=1)
                 total += yb.size(0); correct += (preds == yb).sum().item()
@@ -338,8 +333,8 @@ def test_only(args):
 
     obs_dims = [s.obs_dim or 1 for s in TASKS]
     force_dims = [s.force_dim for s in TASKS]
-    model = MultiTaskClassifier(obs_dims=obs_dims, force_dims=force_dims).to(device)
-    ckpt = os.path.join(args.save_dir, f"multitask_criticality_best_{args.model_idx}.pt")
+    model = SimpleClassifier(obs_dims=obs_dims, force_dims=force_dims).to(device)
+    ckpt = os.path.join(args.save_dir, f"stage1_criticality_best_{args.model_idx}.pt")
     if not os.path.exists(ckpt):
         print(f"[stage1][TEST] no ckpt at {ckpt}; abort")
         return
@@ -354,7 +349,7 @@ def test_only(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_dir", type=str, required=True,
+    parser.add_argument("--data_dir", type=str, default='/mnt/mnt1/linxuan/multitask_maniskill_data/data/stage1',
                         help="Root containing raw/positive and raw/negative subdirs")
     parser.add_argument("--save_dir", type=str, default="criticality/stage1/model")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -363,7 +358,8 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--model_idx", type=int, default=1)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--load_balance_coef", type=float, default=0.01)
+    parser.add_argument("--hidden", type=int, default=512)
+    parser.add_argument("--hidden_layer", type=int, default=4)
     parser.add_argument("--rebuild", action="store_true",
                         help="Ignore cached splits and rebuild from raw npys")
     parser.add_argument("--test", action="store_true",

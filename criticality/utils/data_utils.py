@@ -51,8 +51,11 @@ def episode_to_steps(episode: dict) -> Tuple[np.ndarray, int, int]:
     fd = _ep_force_dim(episode, fallback=force.shape[-1] if force.ndim == 2 else 3)
     if force.ndim == 1:
         force = force.reshape(-1, fd)
-    # Drop trailing zero columns for tasks whose true force_dim < 3
-    force = force[:, :fd]
+    # Ensure force has 3 columns. If source has fewer (old files), pad with zeros.
+    # Do NOT drop trailing zero columns when force_dim < 3 — keep the final zero dim.
+    if force.shape[-1] < 3:
+        pad_cols = 3 - force.shape[-1]
+        force = np.concatenate([force, np.zeros((force.shape[0], pad_cols), dtype=force.dtype)], axis=1)
     T = min(obs.shape[0], force.shape[0])
     feats = np.concatenate([obs[:T], force[:T]], axis=1)            # (T, od+fd)
     ep_label = 0 if int(episode.get("success", 0)) == 1 else 1
