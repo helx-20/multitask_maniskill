@@ -11,7 +11,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from examples.baselines.ppo.ppo import Agent
 from examples.baselines.ppo.task_registry import TASKS, by_env_id, by_task_id
 from criticality.test.maniskill_ordinary_nade import make_env
 from mani_skill.utils.wrappers.record import RecordEpisode
@@ -42,24 +41,20 @@ def main(args):
 
     print(f"[*] 加载策略: {args.checkpoint}", flush=True)
     mt_task_id = None
-    if args.use_multitask_agent:
-        from examples.baselines.ppo.multitask_agent import MultiTaskAgent
-        obs_dims_list = []
-        for s in TASKS:
-            if s.task_id == spec.task_id:
-                obs_dims_list.append(int(np.prod(env.single_observation_space.shape)))
-            else:
-                obs_dims_list.append(s.obs_dim or 1)
-        action_dim = int(np.prod(env.single_action_space.shape))
-        agent = MultiTaskAgent(obs_dims=obs_dims_list, action_dim=action_dim).to(device)
-        sd = torch.load(args.checkpoint, map_location=device)
-        if isinstance(sd, dict) and "model" in sd:
-            sd = sd["model"]
-        agent.load_state_dict(sd)
-        mt_task_id = spec.task_id
-    else:
-        agent = Agent(env).to(device)
-        agent.load_state_dict(torch.load(args.checkpoint, map_location=device))
+    from examples.baselines.ppo.multitask_agent import MultiTaskAgent
+    obs_dims_list = []
+    for s in TASKS:
+        if s.task_id == spec.task_id:
+            obs_dims_list.append(int(np.prod(env.single_observation_space.shape)))
+        else:
+            obs_dims_list.append(s.obs_dim or 1)
+    action_dim = int(np.prod(env.single_action_space.shape))
+    agent = MultiTaskAgent(obs_dims=obs_dims_list, action_dim=action_dim).to(device)
+    sd = torch.load(args.checkpoint, map_location=device)
+    if isinstance(sd, dict) and "model" in sd:
+        sd = sd["model"]
+    agent.load_state_dict(sd)
+    mt_task_id = spec.task_id
     agent.eval()
     
     if args.log_std is not None:
