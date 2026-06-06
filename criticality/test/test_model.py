@@ -191,9 +191,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--worker_id', type=int, default=0)
     parser.add_argument('--env_id', type=str, default=None)
-    parser.add_argument('--task_id', type=int, default=None,
+    parser.add_argument('--task_id', type=int, default=3,
                         help="0=push, 1=pick, 2=stack, 3=peg. Overrides --env_id when set.")
-    parser.add_argument('--all_tasks', default=True,
+    parser.add_argument('--all_tasks', default=False,
                         help='Run the test for all tasks (each task n episodes)')
     parser.add_argument('--checkpoint', type=str, default='examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780644413/multitask_final_ckpt.pt')
     # parser.add_argument('--checkpoint', type=str, default='training/models/round4/offline_model_best.pt')
@@ -211,8 +211,8 @@ if __name__ == '__main__':
     parser.add_argument("--sim_backend", type=str, default="physx_cpu")
     parser.add_argument('--nade', action='store_true', default=False)
     parser.add_argument('--criticality_threshold', type=float, default=0.5, help="Threshold for applying disturbance in NADE")
-    parser.add_argument('--epsilon', type=float, default=0.01, help="Epsilon for epsilon-greedy exploration in NADE")
-    parser.add_argument('--weight_threshold', type=float, default=1e-2, help="Threshold for cumulative importance weight in NADE")
+    parser.add_argument('--epsilon', type=float, default=0.1, help="Epsilon for epsilon-greedy exploration in NADE")
+    parser.add_argument('--weight_threshold', type=float, default=1e-3, help="Threshold for cumulative importance weight in NADE")
     parser.add_argument('--training_out', type=str, default=None)
     
     parser.add_argument('--log_std', type=float, default=None, help="Initial log_std for data collection noise")

@@ -184,11 +184,15 @@ class ManiSkillOrdinaryNADE(gym.Wrapper):
             return np.zeros(self.force_dim, dtype=np.float32), {"weight": 1.0, "p_list": p_list}
 
         if getattr(self.args, "nade", False):
+            # Legacy collectors expected obs_dim + 3 input features; if obs_dim is smaller, pad with zeros.
+            if obs.shape[-1] < self._model_input_dim - 3:
+                pad = np.zeros((self._model_input_dim - 3 - obs.shape[-1],), dtype=obs.dtype)
+                obs = np.concatenate([obs, pad])
             outputs = self.calcu_q(obs)
             scores = self._format_model_output(outputs)
             criticality = scores
             if np.max(criticality) > self.args.criticality_threshold:
-                alpha = 10.0
+                alpha = 5.0
                 shifted = scores - np.max(criticality)
                 criticality = np.exp(shifted * alpha)
                 criticality_pdf = criticality / np.sum(criticality)

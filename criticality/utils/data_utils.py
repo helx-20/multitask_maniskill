@@ -47,6 +47,10 @@ def episode_to_steps(episode: dict) -> Tuple[np.ndarray, int, int]:
     array, plus episode_label and task_id.
     """
     obs = np.asarray(episode["obs"], dtype=np.float32)              # (T, obs_dim_i)
+    if obs.shape[-1] < 48:
+        pad = np.zeros((obs.shape[0], 48 - obs.shape[-1]), dtype=obs.dtype)
+        obs = np.concatenate([obs, pad], axis=1)
+
     force = np.asarray(episode["force"], dtype=np.float32)          # (T, 3) (or (T, fd))
     fd = _ep_force_dim(episode, fallback=force.shape[-1] if force.ndim == 2 else 3)
     if force.ndim == 1:

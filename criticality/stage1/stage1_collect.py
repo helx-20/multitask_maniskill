@@ -121,7 +121,8 @@ def main(args):
         agent.eval()
 
         pos, neg = [], []
-        for ep in range(args.n):
+        n_episodes = args.n * 40 if spec.task_id == 1 else args.n
+        for ep in range(n_episodes):
             obs, _ = env.reset(seed=args.seed + ep)
             base_env = env._env.unwrapped
             force_actor = getattr(base_env, spec.stage1_force_actor_attr)

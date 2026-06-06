@@ -270,7 +270,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--orig', default='test_results',
                     help='Path to .npy file, directory of .npy, or glob pattern for original policy results')
-    ap.add_argument('--new', default='all_results/results_round3',
+    ap.add_argument('--new', default='test_results',
                     help='Same as --orig but for the new policy')
     ap.add_argument('--mode', choices=['auto', 'binary', 'weighted'], default='auto',
                     help='Force a test mode instead of auto-detecting from values')

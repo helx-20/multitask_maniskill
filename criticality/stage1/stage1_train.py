@@ -112,7 +112,6 @@ def build_split(data_dir: str, rng: np.random.Generator | None = None,
     print(f"[stage1] pos episodes: {len(pos_eps)} | neg episodes: {len(neg_eps)}")
     print(f"[stage1] pos episode num by task: {pos_ep_num}")
     print(f"[stage1] neg episode num by task: {neg_ep_num}")
-    import pdb; pdb.set_trace()
 
     per_task_pos = flatten_episodes(pos_eps)
     per_task_neg = flatten_episodes(neg_eps)
@@ -210,6 +209,17 @@ def save_pr_curve(metrics: dict, path: str, title_extra: str = ""):
         return
     fig = plt.figure()
     plt.step(rec, prec, where="post")
+    point_num = 20
+    idx = []
+    for i in range(point_num):
+        for tmp in range(len(thr)):
+            if rec[tmp] >= max(rec) - (max(rec) - min(rec)) * i / point_num:
+                idx.append(tmp)
+                break
+    points = [(rec[i], prec[i], thr[i]) for i in idx]
+    for x, y, tval in points:
+        plt.scatter([x], [y], color='red', s=24)
+        plt.annotate(f'{tval:.2f}', xy=(x, y), xytext=(0, -10), textcoords='offset points', fontsize=8, color='red')
     plt.xlabel("Recall"); plt.ylabel("Precision")
     plt.title(f"Precision-Recall {title_extra} (AUC={metrics['auc']:.4f})")
     plt.grid(True); plt.xlim(0, 1); plt.ylim(0, 1)
@@ -264,6 +274,9 @@ def train(args):
     print(f"[stage1] model obs_dims={obs_dims} force_dims={force_dims}")
 
     model = SimpleClassifier(input_dim=51, hidden=args.hidden, hidden_layer=args.hidden_layer).to(device)
+    if args.initial_model_path and os.path.exists(args.initial_model_path):
+        model.load_state_dict(torch.load(args.initial_model_path, map_location=device))
+        print(f"[stage1] loaded initial model from {args.initial_model_path}")
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
@@ -334,9 +347,7 @@ def test_only(args):
         test_dict = pickle.load(f)
     test_loaders = make_loaders(test_dict, args.batch_size, shuffle=False)
 
-    obs_dims = [s.obs_dim or 1 for s in TASKS]
-    force_dims = [s.force_dim for s in TASKS]
-    model = SimpleClassifier(obs_dims=obs_dims, force_dims=force_dims).to(device)
+    model = SimpleClassifier(input_dim=51, hidden=args.hidden, hidden_layer=args.hidden_layer).to(device)
     ckpt = os.path.join(args.save_dir, f"stage1_criticality_best_{args.model_idx}.pt")
     if not os.path.exists(ckpt):
         print(f"[stage1][TEST] no ckpt at {ckpt}; abort")
@@ -348,15 +359,20 @@ def test_only(args):
         short = by_task_id(tid).short_name
         print(f"  task {tid} ({short}): acc={m['acc']:.4f} p={m['precision']:.4f} "
               f"r={m['recall']:.4f} auc={m['auc']:.4f}")
+        save_pr_curve(m, os.path.join(args.save_dir,
+                                       f"precision_recall_{short}_{args.model_idx}.png"),
+                      title_extra=f"({short})")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", type=str, default='/mnt/mnt1/linxuan/multitask_maniskill_data/data/stage1',
                         help="Root containing raw/positive and raw/negative subdirs")
+    parser.add_argument("--initial_model_path", type=str, default=None,
+                        help="Path to initial model checkpoint (optional)")
     parser.add_argument("--save_dir", type=str, default="criticality/stage1/model")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch_size", type=int, default=4096)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--model_idx", type=int, default=1)
