@@ -282,29 +282,60 @@ def main():
     ap.add_argument('--seed', type=int, default=0)
     args = ap.parse_args()
 
-    print(f'[load] orig: {args.orig}' + (f'  (task={args.task})' if args.task else ''))
-    analyze(args.orig, task_filter=args.task)
-    print(f'[load] new : {args.new}' + (f'  (task={args.task})' if args.task else ''))
-    analyze(args.new, task_filter=args.task)
-    orig, new = load_paired(args.orig, args.new, task_filter=args.task)
+    short_names = ['push', 'pick', 'stack', 'peg']
 
-    if len(orig) == 0:
-        print('\nERROR: no paired episodes to analyze.')
-        sys.exit(1)
+    # If task specified, only run that one; otherwise auto-detect tasks present in either side
+    tasks_to_run = [args.task] if args.task else []
+    if not tasks_to_run:
+        present = set()
+        for s in short_names:
+            try:
+                _ = resolve_files(args.orig, task_filter=s)
+                present.add(s)
+            except FileNotFoundError:
+                pass
+            try:
+                _ = resolve_files(args.new, task_filter=s)
+                present.add(s)
+            except FileNotFoundError:
+                pass
+        tasks_to_run = sorted(present)
 
-    N = len(orig)
-    print(f'\n[paired] N = {N} episodes')
+    if not tasks_to_run:
+        # fallback: analyze whole dirs/files (legacy behavior)
+        print(f'[load] orig: {args.orig}')
+        analyze(args.orig, task_filter=None)
+        print(f'[load] new : {args.new}')
+        analyze(args.new, task_filter=None)
+        orig, new = load_paired(args.orig, args.new, task_filter=None)
+        tasks_to_run = [None]
 
-    if args.mode == 'auto':
-        mode = 'binary' if (is_binary(orig) and is_binary(new)) else 'weighted'
-    else:
-        mode = args.mode
-    print(f'[mode] {mode}  (--mode {args.mode})')
+    for task in tasks_to_run:
+        print('\n' + '=' * 60)
+        print(f"Analyzing task: {task if task is not None else 'ALL'}")
+        print(f'[load] orig: {args.orig}' + (f'  (task={task})' if task else ''))
+        analyze(args.orig, task_filter=task)
+        print(f'[load] new : {args.new}' + (f'  (task={task})' if task else ''))
+        analyze(args.new, task_filter=task)
 
-    if mode == 'binary':
-        mcnemar_analysis(orig, new)
-    else:
-        weighted_analysis(orig, new, n_boot=args.n_boot, rng_seed=args.seed)
+        orig, new = load_paired(args.orig, args.new, task_filter=task)
+        if len(orig) == 0:
+            print('\nERROR: no paired episodes to analyze for this task.')
+            continue
+
+        N = len(orig)
+        print(f'\n[paired] task={task if task else "ALL"} N = {N} episodes')
+
+        if args.mode == 'auto':
+            mode = 'binary' if (is_binary(orig) and is_binary(new)) else 'weighted'
+        else:
+            mode = args.mode
+        print(f'[mode] {mode}  (--mode {args.mode})')
+
+        if mode == 'binary':
+            mcnemar_analysis(orig, new)
+        else:
+            weighted_analysis(orig, new, n_boot=args.n_boot, rng_seed=args.seed)
 
 
 if __name__ == '__main__':

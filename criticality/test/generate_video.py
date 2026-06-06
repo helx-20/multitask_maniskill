@@ -140,10 +140,6 @@ if __name__ == '__main__':
     parser.add_argument('--env_id', type=str, default="PegInsertionSide-v1")
     parser.add_argument('--task_id', type=int, default=None,
                         help="0=push, 1=pick, 2=stack, 3=peg. Overrides --env_id when set.")
-    parser.add_argument('--use_multitask_agent', action='store_true', default=False,
-                        help="Load checkpoint as a MultiTaskAgent (MoE) instead of single-task Agent")
-    parser.add_argument('--criticality_use_single_task', action='store_true', default=False,
-                        help="Force NADE wrapper to use the legacy SimpleClassifier criticality model")
     parser.add_argument('--checkpoint', type=str, default='/home/linxuan/Embodied/insert_tube/examples/baselines/ppo/runs/PegInsertionSide-v1__ppo__1__1780394582/ckpt_301.pt')
     parser.add_argument('--criticality_ckpt', type=str, default=None)
     parser.add_argument('--device', type=str, default="cpu")

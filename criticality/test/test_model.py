@@ -103,15 +103,9 @@ def main(args):
                 with torch.no_grad():
                     # use sampled action + log_prob when training_out requested
                     if args.training_out is not None:
-                        if mt_task_id is not None:
-                            action, log_prob, _, _ = agent.get_action_and_value(obs_tensor, mt_task_id)
-                        else:
-                            action, log_prob, _, _ = agent.get_action_and_value(obs_tensor)
+                        action, log_prob, _, _ = agent.get_action_and_value(obs_tensor)
                     else:
-                        if mt_task_id is not None:
-                            action = agent.get_action(obs_tensor, mt_task_id, deterministic=True)
-                        else:
-                            action = agent.get_action(obs_tensor, deterministic=True)
+                        action = agent.get_action(obs_tensor, deterministic=True)
                 
                 action = torch.clamp(action, action_low, action_high)
                 
@@ -171,7 +165,7 @@ def main(args):
                 if n_samples > 1 and mu_hat > 1e-15:
                     sigma_hat = np.std(weighted_crashes, ddof=1)
                     rhf = (z_score * sigma_hat) / (np.sqrt(n_samples) * mu_hat)
-                print(f"task={spec.short_name} Ep: {ep+1}/{args.n} | Crash Num: {sum(crashes)} | Crash Rate: {mu_hat:.4e} | RHF: {rhf:.3f}", flush=True)
+                print(f"task={spec.short_name} Ep: {ep+1}/{n_episodes} | Crash Num: {sum(crashes)} | Crash Rate: {mu_hat:.4e} | RHF: {rhf:.3f}", flush=True)
 
             if (ep + 1) % args.save_freq == 0:
                 if args.training_out is None:
@@ -201,9 +195,8 @@ if __name__ == '__main__':
                         help="0=push, 1=pick, 2=stack, 3=peg. Overrides --env_id when set.")
     parser.add_argument('--all_tasks', default=True,
                         help='Run the test for all tasks (each task n episodes)')
-    # parser.add_argument('--checkpoint', type=str, default='examples/baselines/ppo/runs/StackCube-v1__ppo__1__1780033432/final_ckpt.pt')
-    parser.add_argument('--checkpoint', type=str, default='training/models/round4/offline_model_best.pt')
-    # parser.add_argument('--criticality_ckpt', type=str, default='criticality/stage2/model/stage2_dqn_iter5000.pt')
+    parser.add_argument('--checkpoint', type=str, default='examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780644413/multitask_final_ckpt.pt')
+    # parser.add_argument('--checkpoint', type=str, default='training/models/round4/offline_model_best.pt')
     parser.add_argument('--criticality_ckpt', type=str, default='criticality/stage1/model/stage1_criticality_best_1.pt')
     parser.add_argument('--device', type=str, default="cpu")
     parser.add_argument('--n', type=int, default=200)

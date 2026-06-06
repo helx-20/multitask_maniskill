@@ -62,9 +62,10 @@ class ManiSkillOrdinaryNADE(gym.Wrapper):
             self.env = env
         self.cfg = cfg
         self.args = args
-        self.spec = spec
+        # `spec` is a common read-only property on gym.Env; avoid shadowing it.
+        self.task_spec = spec
         self.device = torch.device(args.device)
-        self.force_dim = spec.force_dim
+        self.force_dim = self.task_spec.force_dim
 
         # ---- criticality model ----
         from criticality.utils.criticality_model import SimpleClassifier
@@ -72,8 +73,8 @@ class ManiSkillOrdinaryNADE(gym.Wrapper):
         self._model_input_dim = 48 + 3
         self.criticality_model = SimpleClassifier(
             input_dim=self._model_input_dim,
-            hidden=getattr(args, "hidden", 256),
-            hidden_layer=getattr(args, "hidden_layer", 3),
+            hidden=getattr(args, "hidden", 512),
+            hidden_layer=getattr(args, "hidden_layer", 4),
         ).to(self.device)
 
         if getattr(args, "criticality_ckpt", None):
@@ -209,8 +210,8 @@ class ManiSkillOrdinaryNADE(gym.Wrapper):
         obs, info = self.env.reset(**kwargs)
         self.current_state = self._extract_state(obs)
         # update spec.obs_dim if it was None
-        if self.spec.obs_dim is None:
-            self.spec.obs_dim = int(self.current_state.shape[-1])
+        if self.task_spec.obs_dim is None:
+            self.task_spec.obs_dim = int(self.current_state.shape[-1])
         self.step_count = 0
         self.total_weight = 1.0
         self.env_action = np.zeros(self.force_dim, dtype=np.float32)
@@ -252,7 +253,7 @@ class ManiSkillOrdinaryNADE(gym.Wrapper):
             force = force3
 
         ap_force = force * self.cfg.force_mag
-        target_actor = getattr(self.env.unwrapped, self.spec.force_actor_attr)
+        target_actor = getattr(self.env.unwrapped, self.task_spec.force_actor_attr)
         if self.args.sim_backend == "physx_cuda":
             ft = torch.from_numpy(ap_force).to(self.device).float()
             target_actor.apply_force(ft.reshape(1, 3))
