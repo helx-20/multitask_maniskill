@@ -191,9 +191,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--worker_id', type=int, default=0)
     parser.add_argument('--env_id', type=str, default=None)
-    parser.add_argument('--task_id', type=int, default=1,
+    parser.add_argument('--task_id', type=int, default=None,
                         help="0=push, 1=pick, 2=stack, 3=peg. Overrides --env_id when set.")
-    parser.add_argument('--all_tasks', default=False,
+    parser.add_argument('--all_tasks', default=True,
                         help='Run the test for all tasks (each task n episodes)')
     parser.add_argument('--checkpoint', type=str, default='examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780644413/multitask_final_ckpt.pt')
     # parser.add_argument('--checkpoint', type=str, default='training/models/round4/offline_model_best.pt')

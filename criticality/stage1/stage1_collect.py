@@ -221,10 +221,10 @@ def _save(args, pos, neg, task_id):
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     # task selection: pass either --task_id (preferred) or --env_id
-    p.add_argument("--task_id", type=int, default=1,
+    p.add_argument("--task_id", type=int, default=None,
                    help="0=push, 1=pick, 2=stack, 3=peg")
     p.add_argument("--env_id", type=str, default=None)
-    p.add_argument("--all_tasks", default=False,
+    p.add_argument("--all_tasks", default=True,
                    help="collect for all tasks: each worker samples each task n times")
     p.add_argument("--checkpoint", type=str, default='examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780644413/multitask_final_ckpt.pt',
                    help="single-task baseline ckpt for this task")
