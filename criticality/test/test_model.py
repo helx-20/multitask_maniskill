@@ -89,7 +89,7 @@ def main(args):
         start_time = time.time()
 
         # if task_id == 1 (pick), increase episodes because crash rate is very low
-        n_episodes = args.n * 10 if spec.task_id == 1 else args.n
+        n_episodes = args.n
         for ep in range(n_episodes):
             obs, info = env.reset(seed=args.worker_id * n_episodes + ep + spec.task_id)
             ep_obs, ep_acts, ep_weights, ep_log_probs = [], [], [], []
