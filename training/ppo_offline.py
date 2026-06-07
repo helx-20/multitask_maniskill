@@ -210,8 +210,9 @@ def train_offline(args):
 
     act_dim = next(iter(per_task.values()))[1].shape[1]
     obs_dims_list = [spec.obs_dim for spec in TASKS]
+    max_obs_dim = max(obs_dims_list)
 
-    agent = MultiTaskAgent(obs_dims=obs_dims_list, action_dim=act_dim).to(device)
+    agent = MultiTaskAgent(input_dim=max_obs_dim, action_dim=act_dim).to(device)
 
     # 初始化：优先 --initial_ckpt（完整 MultiTaskAgent），其次 --init_expert_ckpts（4 个单任务 ckpt）
     if args.initial_ckpt and os.path.exists(args.initial_ckpt):

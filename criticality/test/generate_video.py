@@ -49,7 +49,7 @@ def main(args):
         else:
             obs_dims_list.append(s.obs_dim or 1)
     action_dim = int(np.prod(env.single_action_space.shape))
-    agent = MultiTaskAgent(obs_dims=obs_dims_list, action_dim=action_dim).to(device)
+    agent = MultiTaskAgent(input_dim=48, action_dim=action_dim).to(device)
     sd = torch.load(args.checkpoint, map_location=device)
     if isinstance(sd, dict) and "model" in sd:
         sd = sd["model"]

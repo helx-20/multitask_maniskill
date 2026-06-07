@@ -84,6 +84,7 @@ TASKS: List[TaskSpec] = [
         xy_only=False,
         force_actor_attr="cube",
         stage1_force_actor_attr="cube",
+        force_mag=2.0,
     ),
     TaskSpec(
         task_id=2,
@@ -98,6 +99,7 @@ TASKS: List[TaskSpec] = [
         force_actor_attr="cubeA",
         # stage1_collect historically targets cubeA — see TaskSpec docstring.
         stage1_force_actor_attr="cubeA",
+        force_mag=1.0,
     ),
     TaskSpec(
         task_id=3,

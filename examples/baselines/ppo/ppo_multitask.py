@@ -303,7 +303,8 @@ def main():
         )
 
     obs_dims = [s.obs_dim for s in TASKS]
-    agent = MultiTaskAgent(obs_dims=obs_dims, action_dim=action_dim).to(device)
+    max_obs_dim = max(obs_dims)
+    agent = MultiTaskAgent(input_dim=max_obs_dim, action_dim=action_dim).to(device)
 
     # ---- warm-start experts from per-task ckpts ----
     if args.init_expert_ckpts:

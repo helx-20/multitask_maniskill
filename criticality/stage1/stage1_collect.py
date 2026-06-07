@@ -116,12 +116,12 @@ def main(args):
         action_high = torch.tensor(env.single_action_space.high, device=device, dtype=torch.float32)
 
         obs_dims = [s.obs_dim for s in TASKS]
-        agent = MultiTaskAgent(obs_dims=obs_dims, action_dim=8).to(device)
+        agent = MultiTaskAgent(input_dim=48, action_dim=8).to(device)
         agent.load_state_dict(torch.load(args.checkpoint, map_location=device))
         agent.eval()
 
         pos, neg = [], []
-        n_episodes = args.n * 40 if spec.task_id == 1 else args.n
+        n_episodes = args.n * 10 if spec.task_id == 1 else args.n
         for ep in range(n_episodes):
             obs, _ = env.reset(seed=args.seed + ep)
             base_env = env._env.unwrapped

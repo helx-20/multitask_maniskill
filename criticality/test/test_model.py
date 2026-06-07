@@ -43,7 +43,7 @@ def _load_agent(args, env, device):
         else:
             obs_dims_list.append(s.obs_dim or 1)
     action_dim = int(np.prod(env.single_action_space.shape))
-    agent = MultiTaskAgent(obs_dims=obs_dims_list, action_dim=action_dim).to(device)
+    agent = MultiTaskAgent(input_dim=48, action_dim=action_dim).to(device)
     sd = torch.load(args.checkpoint, map_location=device)
     if isinstance(sd, dict) and "model" in sd:
         sd = sd["model"]
@@ -191,7 +191,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--worker_id', type=int, default=0)
     parser.add_argument('--env_id', type=str, default=None)
-    parser.add_argument('--task_id', type=int, default=3,
+    parser.add_argument('--task_id', type=int, default=1,
                         help="0=push, 1=pick, 2=stack, 3=peg. Overrides --env_id when set.")
     parser.add_argument('--all_tasks', default=False,
                         help='Run the test for all tasks (each task n episodes)')

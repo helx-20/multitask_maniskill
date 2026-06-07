@@ -125,21 +125,20 @@ class MoEHead(nn.Module):
 class MultiTaskAgent(nn.Module):
     """MoE actor-critic for N tasks.
 
-    obs_dims      : list of per-task obs dims (one Proj per task)
+    input_dim     : unified observation dimension (padded to maximum across tasks)
     action_dim    : Panda pd_joint_delta_pos = 8 for all four ManiSkill tasks
     num_experts   : default 4 (== number of tasks)
     """
 
-    def __init__(self, obs_dims: Sequence[int], action_dim: int,
+    def __init__(self, input_dim: int, action_dim: int,
                  num_experts: int = NUM_EXPERTS_DEFAULT):
         super().__init__()
-        self.num_tasks = len(obs_dims)
         self.num_experts = num_experts
         self.action_dim = action_dim
 
         # unify observation dimension to the maximum across tasks and pad
         # smaller observations with zeros at runtime
-        self.input_dim = int(max(obs_dims))
+        self.input_dim = input_dim
         # shared gate used by both actor and critic (takes padded obs as input)
         self.gate = Gate(input_dim=self.input_dim, gate_hidden=GATE_HIDDEN, num_experts=num_experts)
         # MoE heads now accept raw (padded) obs and each expert contains its own
@@ -337,8 +336,9 @@ def init_experts_from_per_task_ckpts(agent: MultiTaskAgent,
 if __name__ == "__main__":
     torch.manual_seed(0)
     obs_dims = [35, 42, 48, 43]
+    max_obs_dim = max(obs_dims)
     act_dim = 8
-    agent = MultiTaskAgent(obs_dims, act_dim)
+    agent = MultiTaskAgent(max_obs_dim, act_dim)
     for tid, d in enumerate(obs_dims):
         x = torch.randn(7, d)
         a, lp, ent, v = agent.get_action_and_value(x, tid)
