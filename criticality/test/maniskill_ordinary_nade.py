@@ -70,12 +70,7 @@ class ManiSkillOrdinaryNADE(gym.Wrapper):
         # ---- criticality model ----
         from criticality.utils.criticality_model import SimpleClassifier
         # SimpleClassifier expects obs_dim + 3 features (legacy collectors).
-        self._model_input_dim = 48 + 3
-        self.criticality_model = SimpleClassifier(
-            input_dim=self._model_input_dim,
-            hidden=getattr(args, "hidden", 512),
-            hidden_layer=getattr(args, "hidden_layer", 4),
-        ).to(self.device)
+        self.criticality_model = SimpleClassifier(input_dim=51).to(self.device)
 
         if getattr(args, "criticality_ckpt", None):
             print(f"loading criticality ckpt from {args.criticality_ckpt}")
@@ -185,14 +180,14 @@ class ManiSkillOrdinaryNADE(gym.Wrapper):
 
         if getattr(self.args, "nade", False):
             # Legacy collectors expected obs_dim + 3 input features; if obs_dim is smaller, pad with zeros.
-            if obs.shape[-1] < self._model_input_dim - 3:
-                pad = np.zeros((self._model_input_dim - 3 - obs.shape[-1],), dtype=obs.dtype)
+            if obs.shape[-1] < 48:
+                pad = np.zeros((48 - obs.shape[-1],), dtype=obs.dtype)
                 obs = np.concatenate([obs, pad])
             outputs = self.calcu_q(obs)
             scores = self._format_model_output(outputs)
             criticality = scores
             if np.max(criticality) > self.args.criticality_threshold:
-                alpha = 5.0
+                alpha = 10.0
                 shifted = scores - np.max(criticality)
                 criticality = np.exp(shifted * alpha)
                 criticality_pdf = criticality / np.sum(criticality)

@@ -273,7 +273,7 @@ def train(args):
         force_dims.append(spec.force_dim)
     print(f"[stage1] model obs_dims={obs_dims} force_dims={force_dims}")
 
-    model = SimpleClassifier(input_dim=51, hidden=args.hidden, hidden_layer=args.hidden_layer).to(device)
+    model = SimpleClassifier(input_dim=51).to(device)
     if args.initial_model_path and os.path.exists(args.initial_model_path):
         model.load_state_dict(torch.load(args.initial_model_path, map_location=device))
         print(f"[stage1] loaded initial model from {args.initial_model_path}")
@@ -347,7 +347,7 @@ def test_only(args):
         test_dict = pickle.load(f)
     test_loaders = make_loaders(test_dict, args.batch_size, shuffle=False)
 
-    model = SimpleClassifier(input_dim=51, hidden=args.hidden, hidden_layer=args.hidden_layer).to(device)
+    model = SimpleClassifier(input_dim=51).to(device)
     ckpt = os.path.join(args.save_dir, f"stage1_criticality_best_{args.model_idx}.pt")
     if not os.path.exists(ckpt):
         print(f"[stage1][TEST] no ckpt at {ckpt}; abort")
@@ -372,13 +372,11 @@ if __name__ == "__main__":
                         help="Path to initial model checkpoint (optional)")
     parser.add_argument("--save_dir", type=str, default="criticality/stage1/model")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=4096)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--model_idx", type=int, default=1)
+    parser.add_argument("--model_idx", type=int, default=3)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--hidden", type=int, default=512)
-    parser.add_argument("--hidden_layer", type=int, default=4)
     parser.add_argument("--rebuild", action="store_true",
                         help="Ignore cached splits and rebuild from raw npys")
     parser.add_argument("--test", action="store_true",

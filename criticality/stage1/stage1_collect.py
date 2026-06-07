@@ -230,7 +230,7 @@ if __name__ == "__main__":
                    help="single-task baseline ckpt for this task")
     p.add_argument("--device", type=str, default="cpu")
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--n", type=int, default=100)
+    p.add_argument("--n", type=int, default=1000)
     p.add_argument("--worker_id", type=int, default=0)
     p.add_argument("--save_interval", type=int, default=10)
     p.add_argument("--pos_dir", type=str, default="data/stage1/positive")
