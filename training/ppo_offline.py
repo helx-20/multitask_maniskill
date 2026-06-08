@@ -79,6 +79,9 @@ def _build_task_cache(data_dir: str, short: str, files: list, gamma: float,
             print(f"  [skip] {filename}: 加载失败 ({e})")
             continue
         obs = np.array(data['obs'], dtype=np.float32)
+        if obs.shape[1] < 48:
+            pad_width = 48 - obs.shape[1]
+            obs = np.pad(obs, ((0, 0), (0, pad_width)), mode='constant', constant_values=0.0)
         acts = np.array(data['actions'], dtype=np.float32)
         rews = np.array(data['rewards'], dtype=np.float32)
         dones = np.array(data['dones'], dtype=bool)
@@ -110,7 +113,7 @@ def _build_task_cache(data_dir: str, short: str, files: list, gamma: float,
     return tmp
 
 
-def load_offline_dataset(data_dirs, gamma: float = 0.95, act_dim: int = 8):
+def load_offline_dataset(data_dirs, gamma: float = 0.95):
     """按任务加载所有数据集，返回 {task_id: (obs_t, acts_t, returns_t, weights_t, log_probs_t)}。
 
     data_dirs: str 或 list[str]，可有多个 round 的输出目录混合。
@@ -118,8 +121,11 @@ def load_offline_dataset(data_dirs, gamma: float = 0.95, act_dim: int = 8):
     if isinstance(data_dirs, str):
         data_dirs = [data_dirs]
 
+    obs_dim = 48
+    act_dim = 8
+
     # 按 task_id 累积
-    per_task = {spec.task_id: _empty_arrays(spec.obs_dim, act_dim) for spec in TASKS}
+    per_task = {spec.task_id: _empty_arrays(obs_dim, act_dim) for spec in TASKS}
 
     for data_dir in data_dirs:
         if not os.path.isdir(data_dir):
@@ -151,7 +157,7 @@ def load_offline_dataset(data_dirs, gamma: float = 0.95, act_dim: int = 8):
                     continue
                 print(f"[*] {data_dir}/{short}: 从 {len(files)} 个文件构建缓存")
                 data = _build_task_cache(data_dir, short, files, gamma,
-                                         spec.obs_dim, act_dim)
+                                         obs_dim, act_dim)
                 if data['obs'].shape[0] == 0:
                     print(f"  [warn] {short} 0 步有效数据，不写缓存")
                     continue
@@ -171,7 +177,6 @@ def load_offline_dataset(data_dirs, gamma: float = 0.95, act_dim: int = 8):
         acts_t = torch.tensor(agg['actions'], dtype=torch.float32)
         returns_t = torch.tensor(agg['returns'], dtype=torch.float32)
         weights_t = torch.tensor(agg['weights'], dtype=torch.float32)
-        weights_t = weights_t.clamp(max=1.0)
         weights_t = weights_t / (weights_t.mean() + 1e-8)
         log_probs_t = torch.tensor(agg['log_prob'], dtype=torch.float32)
         out[tid] = (obs_t, acts_t, returns_t, weights_t, log_probs_t)
@@ -198,6 +203,13 @@ def _make_loaders(per_task: dict, batch_size: int) -> dict:
         loaders[tid] = DataLoader(ds, batch_size=batch_size, sampler=sampler)
     return loaders
 
+def set_gate_requires_grad(agent, req: bool):
+    for p in agent.actor_moe.gate.parameters():
+        p.requires_grad = req
+    for p in agent.critic_moe.gate.parameters():
+        p.requires_grad = req
+    for p in agent.gate.parameters():
+        p.requires_grad = req
 
 def train_offline(args):
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
@@ -208,25 +220,21 @@ def train_offline(args):
         print("[ERROR] 没有任何任务有有效数据，退出。")
         return
 
-    act_dim = next(iter(per_task.values()))[1].shape[1]
-    obs_dims_list = [spec.obs_dim for spec in TASKS]
-    max_obs_dim = max(obs_dims_list)
+    agent = MultiTaskAgent(input_dim=48, action_dim=8).to(device)
 
-    agent = MultiTaskAgent(input_dim=max_obs_dim, action_dim=act_dim).to(device)
-
-    # 初始化：优先 --initial_ckpt（完整 MultiTaskAgent），其次 --init_expert_ckpts（4 个单任务 ckpt）
     if args.initial_ckpt and os.path.exists(args.initial_ckpt):
         sd = torch.load(args.initial_ckpt, map_location=device)
         if isinstance(sd, dict) and "model" in sd:
             sd = sd["model"]
         agent.load_state_dict(sd)
         print(f"[*] 成功加载完整 MultiTaskAgent ckpt: {args.initial_ckpt}")
-    elif args.init_expert_ckpts:
-        init_experts_from_per_task_ckpts(agent, args.init_expert_ckpts, device=str(device))
 
     if args.log_std is not None:
         with torch.no_grad():
             agent.actor_logstd.fill_(float(args.log_std))
+    
+    if args.freeze_gate:
+        set_gate_requires_grad(agent, False)
 
     optimizer = optim.Adam(
         filter(lambda p: p.requires_grad, agent.parameters()),
@@ -260,7 +268,7 @@ def train_offline(args):
                     x.to(device) for x in [b_obs, b_act, b_ret, b_log_prob, b_weights]
                 ]
 
-                _, logp, _, values = agent.get_action_and_value(b_obs, tid, action=b_act)
+                _, logp, _, values = agent.get_action_and_value(b_obs, action=b_act)
                 values = values.squeeze(-1)
                 v_loss = F.mse_loss(values, b_ret)
 
@@ -277,7 +285,7 @@ def train_offline(args):
                 ppo_loss = -(torch.min(surr1, surr2)).mean()
 
                 # BC anchor: 用确定性 action_mean 拟合数据动作
-                mean_a = agent.get_action(b_obs, tid, deterministic=True)
+                mean_a = agent.get_action(b_obs, deterministic=True)
                 anchor_loss = args.bc_coef * F.mse_loss(mean_a, b_act)
 
                 p_loss = ppo_loss + anchor_loss
@@ -285,9 +293,6 @@ def train_offline(args):
                     loss = args.vf_coef * v_loss
                 else:
                     loss = p_loss + args.vf_coef * v_loss
-
-                if args.load_balance_coef > 0:
-                    loss = loss + args.load_balance_coef * agent.gate_load_balance_loss()
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -315,26 +320,24 @@ def train_offline(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, nargs='+',
-                        default=["./buffers/round1"],
+                        default=["/mnt/mnt1/linxuan/multitask_maniskill_data/data/training/round1"],
                         help="一个或多个目录，每个目录包含 training_<short>_<wid>.npy 文件")
-    parser.add_argument("--initial_ckpt", type=str, default=None,
-                        help="完整 MultiTaskAgent state_dict（互斥优先于 init_expert_ckpts）")
-    parser.add_argument("--init_expert_ckpts", type=str, nargs='*', default=None,
-                        help="按 TASKS 顺序的 4 个单任务 ckpt 路径，用于初始化专家 trunk")
-    parser.add_argument("--out_dir", type=str, default="./training/models/multitask_round1")
+    parser.add_argument("--initial_ckpt", type=str, default="examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780644413/multitask_final_ckpt.pt",
+                        help="完整 MultiTaskAgent state_dict")
+    parser.add_argument("--out_dir", type=str, default="./training/models/round1")
 
-    parser.add_argument("--device", type=str, default="cuda:0")
+    parser.add_argument("--device", type=str, default="cuda:1")
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=2048)
     parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--gamma", type=float, default=0.95)
     parser.add_argument("--vf_coef", type=float, default=1.0)
-    parser.add_argument("--bc_coef", type=float, default=0.5)
+    parser.add_argument("--bc_coef", type=float, default=1.0)
     parser.add_argument("--warmup_epochs", type=int, default=2)
     parser.add_argument("--max_grad_norm", type=float, default=1.0)
     parser.add_argument("--combined_weight_max", type=float, default=10.0)
     parser.add_argument("--save_freq", type=int, default=3)
-    parser.add_argument("--load_balance_coef", type=float, default=0.01)
+    parser.add_argument("--freeze_gate", default=True)
 
     parser.add_argument("--log_std", default=None)
 

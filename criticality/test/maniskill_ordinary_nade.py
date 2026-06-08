@@ -187,7 +187,7 @@ class ManiSkillOrdinaryNADE(gym.Wrapper):
             scores = self._format_model_output(outputs)
             criticality = scores
             if np.max(criticality) > self.args.criticality_threshold:
-                alpha = 10.0
+                alpha = 3.0
                 shifted = scores - np.max(criticality)
                 criticality = np.exp(shifted * alpha)
                 criticality_pdf = criticality / np.sum(criticality)
