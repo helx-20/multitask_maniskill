@@ -196,7 +196,7 @@ def _make_loaders(per_task: dict, batch_size: int) -> dict:
     loaders = {}
     for tid, (obs, acts, rets, wts, lps) in per_task.items():
         ds = TensorDataset(obs, acts, rets, wts, lps)
-        sample_weights = torch.clamp(wts.clone(), min=1e-3, max=10.0)
+        sample_weights = torch.clamp(wts.clone(), min=1e-2, max=5.0)
         sampler = WeightedRandomSampler(
             weights=sample_weights, num_samples=len(sample_weights), replacement=True
         )
@@ -219,6 +219,17 @@ def train_offline(args):
     if not per_task:
         print("[ERROR] 没有任何任务有有效数据，退出。")
         return
+
+    # parse per-task loss weights: only accept comma-separated floats by task_id order
+    task_loss_weights = args.task_loss_weights if args.task_loss_weights else [1, 1, 1, 1]
+
+    # normalize weights to mean=1.0 to keep loss scale stable
+    vals_list = task_loss_weights
+    mean_val = float(np.mean(vals_list))
+    if mean_val <= 0:
+        mean_val = 1.0
+    for tid in range(len(vals_list)):
+        task_loss_weights[tid] = float(task_loss_weights[tid]) / mean_val * len(vals_list)
 
     agent = MultiTaskAgent(input_dim=48, action_dim=8).to(device)
 
@@ -290,9 +301,13 @@ def train_offline(args):
 
                 p_loss = ppo_loss + anchor_loss
                 if epoch <= args.warmup_epochs:
-                    loss = args.vf_coef * v_loss
+                    loss = args.vf_coef * v_loss * 10
                 else:
                     loss = p_loss + args.vf_coef * v_loss
+
+                # Apply per-task loss weighting (e.g., by accident rate)
+                tid_weight = task_loss_weights[tid]
+                loss = loss * float(tid_weight)
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -320,25 +335,27 @@ def train_offline(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, nargs='+',
-                        default=["/mnt/mnt1/linxuan/multitask_maniskill_data/data/training/round1"],
+                        default=["/mnt/mnt1/linxuan/multitask_maniskill_data/data/training/round2"],
                         help="一个或多个目录，每个目录包含 training_<short>_<wid>.npy 文件")
-    parser.add_argument("--initial_ckpt", type=str, default="examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780644413/multitask_final_ckpt.pt",
-                        help="完整 MultiTaskAgent state_dict")
-    parser.add_argument("--out_dir", type=str, default="./training/models/round1")
+    # parser.add_argument("--initial_ckpt", type=str, default="examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780644413/multitask_final_ckpt.pt", help="完整 MultiTaskAgent state_dict")
+    parser.add_argument("--initial_ckpt", type=str, default="training/models/round1/offline_model_best.pt")
+    parser.add_argument("--out_dir", type=str, default="./training/models/round2")
 
     parser.add_argument("--device", type=str, default="cuda:1")
-    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch_size", type=int, default=2048)
-    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--learning_rate", type=float, default=1e-5)
     parser.add_argument("--gamma", type=float, default=0.95)
     parser.add_argument("--vf_coef", type=float, default=1.0)
     parser.add_argument("--bc_coef", type=float, default=1.0)
-    parser.add_argument("--warmup_epochs", type=int, default=2)
+    parser.add_argument("--warmup_epochs", type=int, default=3)
     parser.add_argument("--max_grad_norm", type=float, default=1.0)
     parser.add_argument("--combined_weight_max", type=float, default=10.0)
     parser.add_argument("--save_freq", type=int, default=3)
     parser.add_argument("--freeze_gate", default=True)
-
+    parser.add_argument("--task_loss_weights", type=float, nargs='+', default=[1/2.73, 1/1.26, 1/3.80, 1/4.13],
+                        help="Comma-separated list of floats by task_id order, e.g. [1.0,2.0,1.5,0.5]. "
+                             "Will be normalized to mean=1.0.")
     parser.add_argument("--log_std", default=None)
 
     args = parser.parse_args()

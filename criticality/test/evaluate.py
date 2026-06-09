@@ -268,7 +268,7 @@ def weighted_analysis(orig: np.ndarray, new: np.ndarray,
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--orig', default='test_results',
+    ap.add_argument('--orig', default='all_results/test_results_round1',
                     help='Path to .npy file, directory of .npy, or glob pattern for original policy results')
     ap.add_argument('--new', default='test_results',
                     help='Same as --orig but for the new policy')

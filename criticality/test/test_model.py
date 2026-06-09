@@ -195,8 +195,8 @@ if __name__ == '__main__':
                         help="0=push, 1=pick, 2=stack, 3=peg. Overrides --env_id when set.")
     parser.add_argument('--all_tasks', default=True,
                         help='Run the test for all tasks (each task n episodes)')
-    parser.add_argument('--checkpoint', type=str, default='examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780644413/multitask_final_ckpt.pt')
-    # parser.add_argument('--checkpoint', type=str, default='training/models/round4/offline_model_best.pt')
+    # parser.add_argument('--checkpoint', type=str, default='examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780644413/multitask_final_ckpt.pt')
+    parser.add_argument('--checkpoint', type=str, default='training/models/round2/offline_model_best.pt')
     parser.add_argument('--criticality_ckpt', type=str, default='criticality/stage1/model/stage1_criticality_best_3.pt')
     parser.add_argument('--device', type=str, default="cpu")
     parser.add_argument('--n', type=int, default=200)
