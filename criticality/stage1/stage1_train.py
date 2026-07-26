@@ -366,16 +366,16 @@ def test_only(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_dir", type=str, default='/mnt/mnt1/linxuan/multitask_maniskill_data/data/stage1',
+    parser.add_argument("--data_dir", type=str, default='/mnt/mnt1/linxuan/multitask_maniskill_data/data/stage1_new',
                         help="Root containing raw/positive and raw/negative subdirs")
     parser.add_argument("--initial_model_path", type=str, default=None,
                         help="Path to initial model checkpoint (optional)")
     parser.add_argument("--save_dir", type=str, default="criticality/stage1/model")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch_size", type=int, default=4096)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--model_idx", type=int, default=3)
+    parser.add_argument("--model_idx", default='2_new')
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--rebuild", action="store_true",
                         help="Ignore cached splits and rebuild from raw npys")

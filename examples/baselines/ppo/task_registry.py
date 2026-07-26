@@ -73,7 +73,7 @@ TASKS: List[TaskSpec] = [
         xy_only=True,
         force_actor_attr="obj",
         stage1_force_actor_attr="obj",
-        force_mag=2.0,
+        force_mag=1.0,
     ),
     TaskSpec(
         task_id=1,
@@ -84,7 +84,7 @@ TASKS: List[TaskSpec] = [
         xy_only=False,
         force_actor_attr="cube",
         stage1_force_actor_attr="cube",
-        force_mag=2.0,
+        force_mag=1.0,
     ),
     TaskSpec(
         task_id=2,

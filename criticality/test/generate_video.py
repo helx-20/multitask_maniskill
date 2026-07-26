@@ -32,14 +32,14 @@ def main(args):
         args.env_id = spec.env_id
     else:
         spec = by_env_id(args.env_id)
-    print(f"[*] 初始化环境: {spec.env_id} (task_id={spec.task_id})", flush=True)
+    print(f"[*] Initializing env: {spec.env_id} (task_id={spec.task_id})", flush=True)
     # force rgb_array render mode for video generation
     args.render_mode = "rgb_array"
     env = make_env(args)
 
     env = RecordEpisode(env, output_dir=args.save_video_dir, save_trajectory=False, save_video_trigger=lambda x: True, max_steps_per_video=getattr(args, "num_steps", 1000), video_fps=5)
 
-    print(f"[*] 加载策略: {args.checkpoint}", flush=True)
+    print(f"[*] Loading policy: {args.checkpoint}", flush=True)
     mt_task_id = None
     from examples.baselines.ppo.multitask_agent import MultiTaskAgent
     obs_dims_list = []
@@ -58,7 +58,7 @@ def main(args):
     agent.eval()
     
     if args.log_std is not None:
-        print(f"[*] 注入策略方差 log_std = {args.log_std}")
+        print(f"[*] Injecting policy variance log_std = {args.log_std}")
         with torch.no_grad():
             agent.actor_logstd.data.fill_(args.log_std)
     
@@ -74,22 +74,19 @@ def main(args):
         done = False
         steps = 0
         
-        while steps < 100: # not done:
+        while steps < 100 and (not done or args.ignore_terminations):
             steps += 1
             obs_tensor = torch.as_tensor(obs).to(device)
             if obs_tensor.ndim == 1: obs_tensor = obs_tensor.unsqueeze(0)
 
             with torch.no_grad():
-                if mt_task_id is not None:
-                    action = agent.get_action(obs_tensor, mt_task_id, deterministic=True)
-                else:
-                    action = agent.get_action(obs_tensor, deterministic=True)
+                action = agent.get_action(obs_tensor, deterministic=True)
             
             action = torch.clamp(action, action_low, action_high)
 
             next_obs, reward, terminated, truncated, info = env.step(action)
 
-            # 信号提取逻辑
+            # Signal extraction logic
             current_success = False
             if info.get("_final_info", False):
                 fi = info.get("final_info", {})
@@ -106,7 +103,7 @@ def main(args):
             obs = next_obs
             done = bool(terminated) or bool(truncated)
 
-        # 回合结算
+        # Episode settlement
         is_crash = 1 if not success_once else 0
         total_weight = info.get("criticality_info", {}).get("total_weight", 1.0)
         
@@ -126,21 +123,21 @@ def main(args):
         #         rhf = (z_score * sigma_hat) / (np.sqrt(n_samples) * mu_hat)
         #     print(f"Ep: {ep+1}/{args.n} | Crash Num: {sum(crashes)} | Crash Rate: {mu_hat:.4e} | RHF: {rhf:.3f}", flush=True)
 
-    print(f"[*] 完成！最终 Crash Rate: {np.mean(weighted_crashes):.6e}", flush=True)
+    print(f"[*] Done! Final Crash Rate: {np.mean(weighted_crashes):.6e}", flush=True)
     env.close()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--worker_id', type=int, default=0)
-    parser.add_argument('--env_id', type=str, default="PegInsertionSide-v1")
-    parser.add_argument('--task_id', type=int, default=None,
+    parser.add_argument('--env_id', type=str, default=None)
+    parser.add_argument('--task_id', type=int, default=3,
                         help="0=push, 1=pick, 2=stack, 3=peg. Overrides --env_id when set.")
-    parser.add_argument('--checkpoint', type=str, default='/home/linxuan/Embodied/insert_tube/examples/baselines/ppo/runs/PegInsertionSide-v1__ppo__1__1780394582/ckpt_301.pt')
-    parser.add_argument('--criticality_ckpt', type=str, default=None)
+    parser.add_argument('--checkpoint', type=str, default='examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780644413/multitask_final_ckpt.pt')
+    parser.add_argument('--criticality_ckpt', type=str, default='criticality/stage1/model/stage1_criticality_best_1_update.pt')
     parser.add_argument('--device', type=str, default="cpu")
     parser.add_argument('--n', type=int, default=100)
     
-    parser.add_argument('--force_mag', type=float, default=0.0)
+    parser.add_argument('--force_mag', type=float, default=1.0)
     parser.add_argument('--force_prob', type=float, default=1.0)
     parser.add_argument('--grid_size', type=int, default=11)
     parser.add_argument('--update_every', type=int, default=1)
@@ -148,8 +145,9 @@ if __name__ == '__main__':
     parser.add_argument("--control_mode", type=str, default="pd_joint_delta_pos")
     parser.add_argument("--sim_backend", type=str, default="physx_cpu")
     parser.add_argument('--nade', action='store_true', default=False)
-    parser.add_argument('--criticality_threshold', type=float, default=0.1, help="Threshold for applying disturbance in NADE")
-    parser.add_argument('--weight_threshold', type=float, default=0.2, help="Threshold for counting a crash in weighted metrics")
+    parser.add_argument('--criticality_threshold', type=float, default=0.5, help="Threshold for applying disturbance in NADE")
+    parser.add_argument('--weight_threshold', type=float, default=1e-2)
+    parser.add_argument('--epsilon', type=float, default=0.01)
     parser.add_argument('--save_video_dir', type=str, default='criticality/test/videos_origin')
     parser.add_argument('--ignore_terminations', type=bool, default=True)
     

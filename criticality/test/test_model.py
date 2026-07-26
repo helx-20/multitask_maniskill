@@ -66,14 +66,14 @@ def main(args):
         args.env_id = spec.env_id
         args.task_id = spec.task_id
 
-        print(f"[*] 初始化环境: {spec.env_id} (task_id={spec.task_id})", flush=True)
+        print(f"[*] Initializing env: {spec.env_id} (task_id={spec.task_id})", flush=True)
         env = make_env(args)
 
-        print(f"[*] 加载策略: {args.checkpoint}", flush=True)
+        print(f"[*] Loading policy: {args.checkpoint}", flush=True)
         agent, mt_task_id = _load_agent(args, env, device)
         
         if args.log_std is not None:
-            print(f"[*] 注入策略方差 log_std = {args.log_std}")
+            print(f"[*] Injecting policy variance log_std = {args.log_std}")
             with torch.no_grad():
                 agent.actor_logstd.data.fill_(args.log_std)
         
@@ -177,7 +177,7 @@ def main(args):
                     np.save(save_path, np.array(buffer))
 
         # end task
-        print(f"[*] 完成 task={spec.short_name} | 最终 Crash Rate: {np.mean(weighted_crashes):.6e}", flush=True)
+        print(f"[*] Done task={spec.short_name} | Final Crash Rate: {np.mean(weighted_crashes):.6e}", flush=True)
         env.close()
         if args.training_out is None:
             mode = "nade" if args.nade else "nde"
@@ -196,8 +196,8 @@ if __name__ == '__main__':
     parser.add_argument('--all_tasks', default=True,
                         help='Run the test for all tasks (each task n episodes)')
     # parser.add_argument('--checkpoint', type=str, default='examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780644413/multitask_final_ckpt.pt')
-    parser.add_argument('--checkpoint', type=str, default='training/models/round2/offline_model_best.pt')
-    parser.add_argument('--criticality_ckpt', type=str, default='criticality/stage1/model/stage1_criticality_best_3.pt')
+    parser.add_argument('--checkpoint', type=str, default='training/models/random/offline_model_ep50.pt')
+    parser.add_argument('--criticality_ckpt', type=str, default='criticality/stage1/model/stage1_criticality_best_1_update.pt')
     parser.add_argument('--device', type=str, default="cpu")
     parser.add_argument('--n', type=int, default=200)
     parser.add_argument('--save_dir', type=str, default='./test_results')
@@ -211,7 +211,7 @@ if __name__ == '__main__':
     parser.add_argument("--sim_backend", type=str, default="physx_cpu")
     parser.add_argument('--nade', action='store_true', default=False)
     parser.add_argument('--criticality_threshold', type=float, default=0.5, help="Threshold for applying disturbance in NADE")
-    parser.add_argument('--epsilon', type=float, default=0.1, help="Epsilon for epsilon-greedy exploration in NADE")
+    parser.add_argument('--epsilon', type=float, default=0.01, help="Epsilon for epsilon-greedy exploration in NADE")
     parser.add_argument('--weight_threshold', type=float, default=1e-2, help="Threshold for cumulative importance weight in NADE")
     parser.add_argument('--training_out', type=str, default=None)
     

@@ -226,11 +226,11 @@ if __name__ == "__main__":
     p.add_argument("--env_id", type=str, default=None)
     p.add_argument("--all_tasks", default=True,
                    help="collect for all tasks: each worker samples each task n times")
-    p.add_argument("--checkpoint", type=str, default='examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780644413/multitask_final_ckpt.pt',
-                   help="single-task baseline ckpt for this task")
+    p.add_argument("--checkpoint", type=str, default='examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780644413/multitask_final_ckpt.pt', help="single-task baseline ckpt for this task")
+    # p.add_argument("--checkpoint", type=str, default='training/models/round6/offline_model_best.pt')
     p.add_argument("--device", type=str, default="cpu")
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--n", type=int, default=1000)
+    p.add_argument("--n", type=int, default=500)
     p.add_argument("--worker_id", type=int, default=0)
     p.add_argument("--save_interval", type=int, default=10)
     p.add_argument("--pos_dir", type=str, default="data/stage1/positive")

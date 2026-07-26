@@ -8,15 +8,15 @@ from scipy.stats import norm
 
 
 def _load_sequence(path: str) -> np.ndarray:
-	"""按 `evaluate.py` 的方式加载数据：
-	- 如果是目录：合并该目录下所有 `.npy` 文件（按文件名排序），使用 `allow_pickle=True`。
-	- 如果是文件：直接 `np.load(..., allow_pickle=True).tolist()`。
-	- 否则当成 glob pattern 使用 `glob.glob` 并按排序加载匹配到的文件。
-	返回一维 numpy 数组（np.asarray）。
+	"""Load data the same way `evaluate.py` does:
+	- If a directory: merge all `.npy` files in it (sorted by filename), using `allow_pickle=True`.
+	- If a file: directly use `np.load(..., allow_pickle=True).tolist()`.
+	- Otherwise treat as a glob pattern via `glob.glob` and load matching files in sorted order.
+	Returns a 1-D numpy array (np.asarray).
 	"""
 	def load_npy_file(fpath: str):
 		data = np.load(fpath, allow_pickle=True)
-		# 如果是 numpy array，尝试转为 list
+		# If it's a numpy array, try to convert to list
 		try:
 			return data.tolist()
 		except Exception:
@@ -53,11 +53,11 @@ def _load_sequence(path: str) -> np.ndarray:
 
 
 def plot_failure_rates(paths: List[str], labels: Optional[List[str]] = None, out_path: str = 'failure_rates.png') -> None:
-	"""为每个路径绘制累计失败率折线图和95%置信区间的阴影半宽度。
+	"""Plot cumulative failure rate line chart with 95% CI shaded half-width for each path.
 
-	paths: 列表，每项为文件或目录（参见 `_load_sequence` 的加载规则）。
-	labels: 可选的曲线标签列表。
-	out_path: 输出图片路径。
+	paths: list, each item is a file or directory (see `_load_sequence` loading rules).
+	labels: optional list of curve labels.
+	out_path: output image path.
 	"""
 	z = norm.ppf(1 - 0.05 / 2)  # 95% CI
 
@@ -67,11 +67,11 @@ def plot_failure_rates(paths: List[str], labels: Optional[List[str]] = None, out
 		labels = [os.path.basename(p) or p for p in paths]
 
 	colors = plt.get_cmap('tab10')
-	# 红色与 tests/draw_RHF.py 中一致
+	# Red color consistent with tests/draw_RHF.py
 	primary_red = '#8B0000'
 	primary_fill = (1.0, 215/255, 215/255)
 
-	# 按用户要求：横坐标为 `paths` 的索引（iteration），每个路径聚合为一个点（合并目录下所有 .npy）
+	# Per user request: X-axis is the index of `paths` (iteration), each path aggregated as one point (merging all .npy in the directory)
 	means = []
 	lowers = []
 	uppers = []
@@ -90,7 +90,7 @@ def plot_failure_rates(paths: List[str], labels: Optional[List[str]] = None, out
 
 		N = arr.size
 		mean = float(np.nanmean(arr))
-		# 标准误：对二值数据或加权数据都使用样本标准差 / sqrt(N)
+		# Standard error: use sample std / sqrt(N) for both binary and weighted data
 		if N > 1:
 			se = float(np.nanstd(arr, ddof=1) / np.sqrt(N))
 		else:
@@ -99,7 +99,7 @@ def plot_failure_rates(paths: List[str], labels: Optional[List[str]] = None, out
 
 		lower = mean - half
 		upper = mean + half
-		# 对概率值做裁剪（若数据为概率/失败率）
+		# Clip probability values (if data represents probabilities/failure rates)
 		lower = max(lower, 0.0)
 		upper = min(upper, 1.0)
 
@@ -111,7 +111,7 @@ def plot_failure_rates(paths: List[str], labels: Optional[List[str]] = None, out
 	lowers = np.array(lowers)
 	uppers = np.array(uppers)
 
-	# 绘制线与置信区间带
+	# Plot line and confidence interval band
 	for idx in range(len(paths)):
 		if idx == 0:
 			line_color = primary_red
@@ -124,7 +124,7 @@ def plot_failure_rates(paths: List[str], labels: Optional[List[str]] = None, out
 
 	plt.plot(xs, means, '-o', color=primary_red, linewidth=2)
 	#plt.fill_between(xs, lowers, uppers, color=primary_fill, alpha=0.5)
-	# 标签显示每个点的值
+	# Show value labels for each point
 	for xi, m in zip(xs, means):
 		if not np.isnan(m):
 			plt.text(xi, m, f"{m:.2e}", ha='center', va='bottom', fontsize=14)
@@ -147,7 +147,7 @@ def plot_failure_rates(paths: List[str], labels: Optional[List[str]] = None, out
 
 
 if __name__ == '__main__':
-	# 将结果列表作为输入，输出到 workspace 下的 results/failure_rates.png
+	# Use results list as input, output to results/failure_rates.png under workspace
 	results_list = ['all_results/results_origin', 'all_results/results_round1', 'all_results/results_round2', 'all_results/results_round3', 'all_results/results_round4', 'all_results/results_round5']
 	plot_failure_rates(results_list, out_path='training/failure_rates.png')
 	print('Saved failure plot to training/failure_rates.png')

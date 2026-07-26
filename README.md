@@ -1,94 +1,209 @@
-# ManiSkill 3
+# Multi-Task ManiSkill — Criticality/NADE Pipeline
 
+**Software Overview**
+- This software implements a ManiSkill-based "criticality/NADE" evaluation and offline retraining pipeline across 4 tabletop manipulation tasks. Main modules: multi-task MoE PPO baseline, Stage-1 criticality classifier, NADE testing/data collection, offline PPO retraining with importance sampling.
 
-![teaser](figures/teaser.jpg)
-<p style="text-align: center; font-size: 0.8rem; color: #999;margin-top: -1rem;">Sample of environments/robots rendered with ray-tracing. Scene datasets sourced from AI2THOR and ReplicaCAD</p>
+**Supported Tasks**
+| task_id | short_name | env_id | obs_dim | force_dim | actor |
+|---------|------------|--------|---------|-----------|-------|
+| 0 | push | PushCube-v1 | 35 | 2 (xy) | obj |
+| 1 | pick | PickCube-v1 | 42 | 3 | cube |
+| 2 | stack | StackCube-v1 | 48 | 3 | cubeA |
+| 3 | peg | PegInsertionSide-v1 | 43 | 3 | peg |
 
-[![Downloads](https://static.pepy.tech/badge/mani_skill)](https://pepy.tech/project/mani_skill)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/haosulab/ManiSkill/blob/main/examples/tutorials/1_quickstart.ipynb)
-[![PyPI version](https://badge.fury.io/py/mani-skill.svg)](https://badge.fury.io/py/mani-skill)
-[![Docs status](https://img.shields.io/badge/docs-passing-brightgreen.svg)](https://maniskill.readthedocs.io/en/latest/)
-[![Discord](https://img.shields.io/discord/996566046414753822?logo=discord)](https://discord.gg/x8yUZe5AdN)
+Task definitions live in [`examples/baselines/ppo/task_registry.py`](examples/baselines/ppo/task_registry.py) — the single source of truth imported by all modules.
 
-ManiSkill is an open-source framework for robot simulation and training powered by [SAPIEN](https://sapien.ucsd.edu/), with a strong focus on manipulation skills. Among its features include:
-- GPU parallelized visual data collection system. On the high end you can collect RGBD + Segmentation data at 30,000+ FPS on a 4090 GPU
-- GPU parallelized simulation, enabling high throughput state-based synthetic data collection in simulation
-- GPU parallelized heterogeneous simulation, where every parallel environment has a completely different scene/set of objects
-- Example tasks cover a wide range of different robot embodiments (humanoids, mobile manipulators, single-arm robots) as well as a wide range of different tasks (table-top, drawing/cleaning, dexterous manipulation)
-- Flexible and simple task building API that abstracts away much of the complex GPU memory management code via an object oriented design
-- Real2sim environments for scalably evaluating real-world policies 100x faster via GPU simulation.
-- Sim2real examples for deploying policies trained in simulation to the real world
-- Many tuned robot learning baselines in Reinforcement Learning (e.g. PPO, SAC, [TD-MPC2](https://github.com/nicklashansen/tdmpc2)), Imitation Learning (e.g. Behavior Cloning, [Diffusion Policy](https://github.com/real-stanford/diffusion_policy)), and large Vision Language Action (VLA) models (e.g. [Octo](https://github.com/octo-models/octo), [RDT-1B](https://github.com/thu-ml/RoboticsDiffusionTransformer), [RT-x](https://robotics-transformer-x.github.io/))
+---
 
-For more details we encourage you to take a look at our [paper](https://arxiv.org/abs/2410.00425), published at [RSS 2025](https://roboticsconference.org/).
+**Prerequisites**
+- Ensure the Python environment has required dependencies installed (ManiSkill, PyTorch, scipy, etc.).
+- Choose `--sim_backend physx_cpu` (numpy force API) or `physx_cuda` (torch force API) as needed. Scripts default to `physx_cpu`.
 
-Please refer to our [documentation](https://maniskill.readthedocs.io/en/latest/user_guide) to learn more information from tutorials on building tasks to sim2real to running baselines. If you find any bugs or have any feature requests please post them to our [GitHub issues](https://github.com/haosulab/ManiSkill/issues/) or discuss about them on [GitHub discussions](https://github.com/haosulab/ManiSkill/discussions/). We also have a [Discord Server](https://discord.gg/x8yUZe5AdN) through which we make announcements and discuss about ManiSkill.
+---
 
-Users looking for the original ManiSkill2 can find the commit for that codebase at the [v0.5.3 tag](https://github.com/haosulab/ManiSkill/tree/v0.5.3)
+## 1. Multi-Task PPO Baseline
 
-## Installation
-Installation of ManiSkill is extremely simple, you only need to run a few pip installs and setup Vulkan for rendering.
+**Entry script:** [`examples/baselines/ppo/ppo_multitask.py`](examples/baselines/ppo/ppo_multitask.py)
 
+Trains a Mixture-of-Experts (MoE) actor-critic (`MultiTaskAgent`) across 4 parallel ManiSkillVectorEnv instances. Each task gets its own projection layer and expert trunk; the gate routes observations to the correct expert.
+
+**Training:**
 ```bash
-# install the package
-pip install --upgrade mani_skill
-# install a version of torch that is compatible with your system
-pip install torch
+python examples/baselines/ppo/ppo_multitask.py \
+  --num_envs_per_task=512 --num_eval_envs_per_task=32 \
+  --total_timesteps=100000000 --eval_freq=10 --num_steps=100
 ```
 
-Finally you also need to set up Vulkan with [instructions here](https://maniskill.readthedocs.io/en/latest/user_guide/getting_started/installation.html#vulkan)
-
-For more details about installation (e.g. from source, or doing troubleshooting) see [the documentation](https://maniskill.readthedocs.io/en/latest/user_guide/getting_started/installation.html
-)
-
-## Getting Started
-
-To get started, check out the quick start documentation: https://maniskill.readthedocs.io/en/latest/user_guide/getting_started/quickstart.html
-
-We also have a quick start [colab notebook](https://colab.research.google.com/github/haosulab/ManiSkill/blob/main/examples/tutorials/1_quickstart.ipynb) that lets you try out GPU parallelized simulation without needing your own hardware. Everything is runnable on Colab free tier.
-
-For a full list of example scripts you can run, see [the docs](https://maniskill.readthedocs.io/en/latest/user_guide/demos/index.html).
-
-## System Support
-
-We currently best support Linux based systems. There is limited support for windows and MacOS at the moment. We are working on trying to support more features on other systems but this may take some time. Most constraints stem from what the [SAPIEN](https://github.com/haosulab/SAPIEN/) package is capable of supporting.
-
-| System / GPU         | CPU Sim | GPU Sim | Rendering |
-| -------------------- | ------- | ------- | --------- |
-| Linux / NVIDIA GPU   | ✅      | ✅      | ✅        |
-| Windows / NVIDIA GPU | ✅      | ❌      | ✅        |
-| Windows / AMD GPU    | ✅      | ❌      | ✅        |
-| WSL / Anything       | ✅      | ❌      | ❌        |
-| MacOS / Anything     | ✅      | ❌      | ✅        |
-
-## Citation
-
-
-If you use ManiSkill3 (versions `mani_skill>=3.0.0`) in your work please cite our [ManiSkill3 paper](https://arxiv.org/abs/2410.00425) as so:
-
-```
-@article{taomaniskill3,
-  title={ManiSkill3: GPU Parallelized Robotics Simulation and Rendering for Generalizable Embodied AI},
-  author={Stone Tao and Fanbo Xiang and Arth Shukla and Yuzhe Qin and Xander Hinrichsen and Xiaodi Yuan and Chen Bao and Xinsong Lin and Yulin Liu and Tse-kai Chan and Yuan Gao and Xuanlin Li and Tongzhou Mu and Nan Xiao and Arnav Gurha and Viswesh Nagaswamy Rajesh and Yong Woo Choi and Yen-Ru Chen and Zhiao Huang and Roberto Calandra and Rui Chen and Shan Luo and Hao Su},
-  journal = {Robotics: Science and Systems},
-  year={2025},
-} 
+**Evaluation:**
+```bash
+python examples/baselines/ppo/ppo_multitask.py \
+  --evaluate --checkpoint path/to/multitask_final_ckpt.pt \
+  --num_eval_envs_per_task=32 --num_eval_steps=1000
 ```
 
-If you use ManiSkill2 (version `mani_skill==0.5.3` or lower) in your work please cite the ManiSkill2 paper as so:
-```
-@inproceedings{gu2023maniskill2,
-  title={ManiSkill2: A Unified Benchmark for Generalizable Manipulation Skills},
-  author={Gu, Jiayuan and Xiang, Fanbo and Li, Xuanlin and Ling, Zhan and Liu, Xiqiang and Mu, Tongzhou and Tang, Yihe and Tao, Stone and Wei, Xinyue and Yao, Yunchao and Yuan, Xiaodi and Xie, Pengwei and Huang, Zhiao and Chen, Rui and Su, Hao},
-  booktitle={International Conference on Learning Representations},
-  year={2023}
-}
+**Warm-start from single-task checkpoints:**
+```bash
+python examples/baselines/ppo/ppo_multitask.py \
+  --init_expert_ckpts push.pt pick.pt stack.pt peg.pt
 ```
 
-Note that some other assets, algorithms, etc. in ManiSkill are from other sources/research. We try our best to include the correct citation bibtex where possible when introducing the different components provided by ManiSkill.
+---
 
-## License
+## 2. Stage-1: Criticality Classifier
 
-All rigid body environments in ManiSkill are licensed under fully permissive licenses (e.g., Apache-2.0).
+**Collection script:** [`criticality/stage1/stage1_collect.py`](criticality/stage1/stage1_collect.py)
+**Training script:** [`criticality/stage1/stage1_train.py`](criticality/stage1/stage1_train.py)
+**Model:** [`criticality/utils/criticality_model.py`](criticality/utils/criticality_model.py) (MoE `MultiTaskClassifier` dispatching by `task_id`)
 
-The assets are licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/legalcode).
+**Collect positive/negative samples (per worker):**
+```bash
+python criticality/stage1/stage1_collect.py \
+  --task_id 2 \
+  --checkpoint examples/baselines/ppo/runs/<run>/multitask_final_ckpt.pt \
+  --n 2000 --worker_id 0 \
+  --pos_dir data/stage1/raw/positive --neg_dir data/stage1/raw/negative
+```
+
+**Train the classifier:**
+```bash
+python criticality/stage1/stage1_train.py \
+  --data_dir /path/to/data/stage1 \
+  --save_dir criticality/stage1/model --model_idx 1
+```
+
+The trainer performs stratified (per-task) train/val/test split and caches the splits as `.pkl` files under `data_dir`.
+
+---
+
+## 3. NADE Testing & Trajectory Collection
+
+**Entry scripts:**
+- [`criticality/test/test_model.py`](criticality/test/test_model.py) — main test harness (NDE & NADE modes, buffer collection)
+- [`criticality/test/evaluate.py`](criticality/test/evaluate.py) — paired significance testing (McNemar for binary, paired t-test for weighted)
+- [`criticality/test/generate_video.py`](criticality/test/generate_video.py) — render rollout videos
+- [`criticality/test/maniskill_ordinary_nade.py`](criticality/test/maniskill_ordinary_nade.py) — per-task NADE wrapper (imported by test_model)
+
+**Natural environment (uniform sampling / NDE):**
+```bash
+python criticality/test/test_model.py --worker_id 0 --n 200 \
+  --checkpoint <policy.pt> --save_dir ./test_results
+```
+
+**Adversarial environment (NADE, criticality-based sampling):**
+```bash
+python criticality/test/test_model.py --worker_id 0 --n 200 --nade \
+  --checkpoint <policy.pt> \
+  --criticality_ckpt criticality/stage1/model/stage1_criticality_best_1.pt \
+  --save_dir ./test_results
+```
+
+**Collect training buffers for offline PPO:**
+```bash
+python criticality/test/test_model.py --nade --training_out ./buffers/roundN \
+  --checkpoint <policy.pt> --criticality_ckpt <stage1.pt>
+```
+Each worker produces one `training_<short>_<wid>.npy` file containing obs, actions, weights, rewards, dones, and log_probs.
+
+**Paired significance test (compare two policies):**
+```bash
+python criticality/test/evaluate.py --orig results/orig --new results/new
+```
+
+---
+
+## 4. Offline PPO Retraining
+
+**Entry script:** [`training/ppo_offline.py`](training/ppo_offline.py)
+
+Fine-tunes a `MultiTaskAgent` with PPO-clip + BC anchor + value loss, using importance weights from the NADE sampler. Supports multi-round iterative retraining.
+
+**Training:**
+```bash
+python training/ppo_offline.py \
+  --dataset /path/to/buffers/round5 \
+  --initial_ckpt training/models/round4/offline_model_best.pt \
+  --out_dir ./training/models/round5 \
+  --epochs 50 --batch_size 1024 --learning_rate 1e-5 \
+  --bc_coef 1.0 --vf_coef 1.0 --warmup_epochs 0
+```
+
+**Key arguments:**
+| Argument | Description |
+|----------|-------------|
+| `--dataset` | One or more directories of `training_<short>_<wid>.npy` files |
+| `--initial_ckpt` | Starting MultiTaskAgent checkpoint |
+| `--out_dir` | Output directory for model checkpoints |
+| `--bc_coef` | BC anchor loss coefficient (MSE to data actions) |
+| `--vf_coef` | Value function loss coefficient |
+| `--warmup_epochs` | Number of initial epochs with value-only loss (×10) |
+| `--freeze_gate` | Freeze MoE gate parameters during training |
+| `--task_loss_weights` | Per-task loss weights (normalized to mean=1.0) |
+| `--log_std` | Fixed policy log_std (None = learned) |
+
+On first load, the script aggregates all `.npy` files per task into `all_data_unified_weight_<short>.npy` caches; delete them to force a rebuild.
+
+**Iterative retraining round model:**
+```
+training/models/
+├── round1/ ... round7/    # successive offline retraining rounds
+└── random/                # random-policy baseline
+```
+
+---
+
+## 5. Evaluation & Visualization
+
+**Batch evaluate all result directories:**
+```bash
+python training/evaluate_all.py --root_path all_results
+```
+
+**Plot failure rates across rounds:**
+```bash
+python training/draw_failure_rates.py
+```
+
+---
+
+## Parallelization & Workers
+
+`stage1_collect.py` and `test_model.py` support multi-process parallelism — pass different `--worker_id` values with corresponding random `--seed`. Each worker writes its output to the shared target directory (1 `.npy` per worker).
+
+---
+
+## Common Notes & Conventions
+
+- **Backend:** Scripts default to `--sim_backend physx_cpu`. Under `physx_cuda`, `apply_force` requires Torch tensors; under `physx_cpu`, numpy arrays are used. The code contains both paths — maintain both when modifying.
+- **Force semantics:** Unit force vectors are stored and used by the classifier (each component ∈ {-1, -0.8, ..., 1.0}), multiplied by `force_mag` when applied. PushCube uses 2D forces (xy only); all other tasks use 3D.
+- **Crash labels:** If an episode never triggers `success_once`, it is labeled as a positive sample (crash=1) for the criticality classifier.
+- **Observation dimension:** All modules expect exactly `obs_dim=48` (padded with zeros if the task's native dim is smaller). The MoE agent input is hardcoded to 48; individual task obs_dims are defined in `task_registry.py`.
+- **Importance weights:** The NADE wrapper writes per-step `weight` and per-episode `total_weight` into `info['criticality_info']`. The offline training and evaluation scripts depend on this field — do not break this contract.
+- **Task routing:** All modules use `task_registry.TaskSpec.task_id` (0–3) to route samples to the correct expert / projection. Episode dicts carry `task_id`; legacy files without it are assumed `task_id=0`.
+
+---
+
+## Troubleshooting
+
+- If the `mani_skill` package cannot be found, ensure you're using the repository root as CWD, or manually add the `mani_skill` directory to `PYTHONPATH`.
+- If checkpoint path defaults don't apply (Windows/different disk), explicitly pass `--checkpoint`, `--data_dir`, or `--dataset`.
+- Observation dimension mismatch warnings from `stage1_collect.py` mean the env's current obs space doesn't match expectations — update `TaskSpec.obs_dim` in the registry if the observation mode changed.
+
+---
+
+## File Map
+
+| Module | Key Files |
+|--------|-----------|
+| Task registry | [`examples/baselines/ppo/task_registry.py`](examples/baselines/ppo/task_registry.py) |
+| MoE agent | [`examples/baselines/ppo/multitask_agent.py`](examples/baselines/ppo/multitask_agent.py) |
+| Multi-task PPO | [`examples/baselines/ppo/ppo_multitask.py`](examples/baselines/ppo/ppo_multitask.py) |
+| Stage-1 collect | [`criticality/stage1/stage1_collect.py`](criticality/stage1/stage1_collect.py) |
+| Stage-1 train | [`criticality/stage1/stage1_train.py`](criticality/stage1/stage1_train.py) |
+| Criticality model | [`criticality/utils/criticality_model.py`](criticality/utils/criticality_model.py) |
+| NADE wrapper | [`criticality/test/maniskill_ordinary_nade.py`](criticality/test/maniskill_ordinary_nade.py) |
+| NADE testing | [`criticality/test/test_model.py`](criticality/test/test_model.py) |
+| Paired eval | [`criticality/test/evaluate.py`](criticality/test/evaluate.py) |
+| Video rendering | [`criticality/test/generate_video.py`](criticality/test/generate_video.py) |
+| Offline PPO | [`training/ppo_offline.py`](training/ppo_offline.py) |
+| Batch evaluate | [`training/evaluate_all.py`](training/evaluate_all.py) |
+| Failure rate plot | [`training/draw_failure_rates.py`](training/draw_failure_rates.py) |

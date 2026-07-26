@@ -63,7 +63,7 @@ def main():
     short_names = ['push', 'pick', 'stack', 'peg']
 
     min_avg_failure_rate = float('inf')
-    for dir in os.listdir(args.root_path):
+    for dir in sorted(os.listdir(args.root_path)):
         print(dir)
         data_dir = os.path.join(args.root_path, dir)
         avg_failure_rate = 0
