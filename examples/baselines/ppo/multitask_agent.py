@@ -38,7 +38,7 @@ from torch.distributions.normal import Normal
 HIDDEN = 256
 EXPERT_TRUNK = (256, 512, 512, 256)
 ACTION_OUT_STD = 0.01 * np.sqrt(2)
-NUM_EXPERTS_DEFAULT = 4
+NUM_EXPERTS_DEFAULT = 2
 GATE_HIDDEN = 256
 
 
@@ -126,8 +126,8 @@ class MultiTaskAgent(nn.Module):
     """MoE actor-critic for N tasks.
 
     input_dim     : unified observation dimension (padded to maximum across tasks)
-    action_dim    : Panda pd_joint_delta_pos = 8 for all four ManiSkill tasks
-    num_experts   : default 4 (== number of tasks)
+    action_dim    : Panda pd_joint_delta_pos = 8 for all ManiSkill tasks
+    num_experts   : default 2 (== number of tasks)
     """
 
     def __init__(self, input_dim: int, action_dim: int,
@@ -335,7 +335,7 @@ def init_experts_from_per_task_ckpts(agent: MultiTaskAgent,
 # ---------- quick sanity check ----------
 if __name__ == "__main__":
     torch.manual_seed(0)
-    obs_dims = [35, 42, 48, 43]
+    obs_dims = [48, 43]
     max_obs_dim = max(obs_dims)
     act_dim = 8
     agent = MultiTaskAgent(max_obs_dim, act_dim)

@@ -276,13 +276,13 @@ def main():
                     help='Force a test mode instead of auto-detecting from values')
     ap.add_argument('--task', type=str, default=None,
                     help='Only consider files whose basename contains this task short_name '
-                         '(push / pick / stack / peg). Useful when results dir holds mixed tasks.')
+                         '(stack / peg). Useful when results dir holds mixed tasks.')
     ap.add_argument('--n_boot', type=int, default=10000,
                     help='Bootstrap iterations (weighted mode only)')
     ap.add_argument('--seed', type=int, default=0)
     args = ap.parse_args()
 
-    short_names = ['push', 'pick', 'stack', 'peg']
+    short_names = ['stack', 'peg']
 
     # If task specified, only run that one; otherwise auto-detect tasks present in either side
     tasks_to_run = [args.task] if args.task else []

@@ -1,10 +1,10 @@
-"""Stage-1 trajectory collection for ANY of the four ManiSkill tasks.
+"""Stage-1 trajectory collection for the two ManiSkill tasks.
 
-Driven by --task_id (0=push, 1=pick, 2=stack, 3=peg) or --env_id; both keep
+Driven by --task_id (0=stack, 1=peg) or --env_id; both keep
 the originally per-task script's behaviour 1:1:
 
-  - obs dim is task-specific (35 / 42 / 48 / ~43; probed at runtime).
-  - force vector dim is 2 for PushCube (xy only), 3 for the others.
+  - obs dim is task-specific (48 / ~43; probed at runtime).
+  - force vector dim is 3 for all tasks.
   - The force target actor name comes from
     `task_registry.TaskSpec.stage1_force_actor_attr` (StackCube uses cubeA
     here to match the historical single-task script).
@@ -41,18 +41,14 @@ def to_np(x):
 
 
 def sample_unit_force(force_dim: int, xy_only: bool) -> np.ndarray:
-    """Discrete grid in [-1, 1] step 0.2, returns shape (3,) regardless of
-    force_dim so all-task data files share the same force schema. Trailing
-    dims that don't apply to the task are zero."""
+    """Discrete grid in [-1, 1] step 0.2, returns shape (3,) so all-task data
+    files share the same force schema. All remaining tasks are 3D force; xy_only
+    zeros the z-component."""
     out = np.zeros(3, dtype=np.float32)
-    if force_dim == 2:
-        f = np.random.randint(-5, 6, size=2).astype(np.float32) * 0.2
-        out[:2] = f
-    else:
-        f = np.random.randint(-5, 6, size=3).astype(np.float32) * 0.2
-        out[:] = f
-        if xy_only:
-            out[2] = 0.0
+    f = np.random.randint(-5, 6, size=3).astype(np.float32) * 0.2
+    out[:] = f
+    if xy_only:
+        out[2] = 0.0
     return out
 
 
@@ -222,7 +218,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     # task selection: pass either --task_id (preferred) or --env_id
     p.add_argument("--task_id", type=int, default=None,
-                   help="0=push, 1=pick, 2=stack, 3=peg")
+                   help="0=stack, 1=peg")
     p.add_argument("--env_id", type=str, default=None)
     p.add_argument("--all_tasks", default=True,
                    help="collect for all tasks: each worker samples each task n times")

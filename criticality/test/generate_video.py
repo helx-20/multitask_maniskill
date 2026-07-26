@@ -130,8 +130,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--worker_id', type=int, default=0)
     parser.add_argument('--env_id', type=str, default=None)
-    parser.add_argument('--task_id', type=int, default=3,
-                        help="0=push, 1=pick, 2=stack, 3=peg. Overrides --env_id when set.")
+    parser.add_argument('--task_id', type=int, default=1,
+                        help="0=stack, 1=peg. Overrides --env_id when set.")
     parser.add_argument('--checkpoint', type=str, default='examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780644413/multitask_final_ckpt.pt')
     parser.add_argument('--criticality_ckpt', type=str, default='criticality/stage1/model/stage1_criticality_best_1_update.pt')
     parser.add_argument('--device', type=str, default="cpu")

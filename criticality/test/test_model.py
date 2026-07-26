@@ -88,7 +88,7 @@ def main(args):
         
         start_time = time.time()
 
-        # if task_id == 1 (pick), increase episodes because crash rate is very low
+        # if task_id == 0 (stack), increase episodes because crash rate is very low
         n_episodes = args.n
         for ep in range(n_episodes):
             obs, info = env.reset(seed=args.worker_id * n_episodes + ep + spec.task_id)
@@ -192,7 +192,7 @@ if __name__ == '__main__':
     parser.add_argument('--worker_id', type=int, default=0)
     parser.add_argument('--env_id', type=str, default=None)
     parser.add_argument('--task_id', type=int, default=None,
-                        help="0=push, 1=pick, 2=stack, 3=peg. Overrides --env_id when set.")
+                        help="0=stack, 1=peg. Overrides --env_id when set.")
     parser.add_argument('--all_tasks', default=True,
                         help='Run the test for all tasks (each task n episodes)')
     # parser.add_argument('--checkpoint', type=str, default='examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780644413/multitask_final_ckpt.pt')

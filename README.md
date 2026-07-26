@@ -1,15 +1,13 @@
 # Multi-Task ManiSkill — Criticality/NADE Pipeline
 
 **Software Overview**
-- This software implements a ManiSkill-based "criticality/NADE" evaluation and offline retraining pipeline across 4 tabletop manipulation tasks. Main modules: multi-task MoE PPO baseline, Stage-1 criticality classifier, NADE testing/data collection, offline PPO retraining with importance sampling.
+- This software implements a ManiSkill-based "criticality/NADE" evaluation and offline retraining pipeline across 2 tabletop manipulation tasks. Main modules: multi-task MoE PPO baseline, Stage-1 criticality classifier, NADE testing/data collection, offline PPO retraining with importance sampling.
 
 **Supported Tasks**
 | task_id | short_name | env_id | obs_dim | force_dim | actor |
 |---------|------------|--------|---------|-----------|-------|
-| 0 | push | PushCube-v1 | 35 | 2 (xy) | obj |
-| 1 | pick | PickCube-v1 | 42 | 3 | cube |
-| 2 | stack | StackCube-v1 | 48 | 3 | cubeA |
-| 3 | peg | PegInsertionSide-v1 | 43 | 3 | peg |
+| 0 | stack | StackCube-v1 | 48 | 3 | cubeA |
+| 1 | peg | PegInsertionSide-v1 | 43 | 3 | peg |
 
 Task definitions live in [`examples/baselines/ppo/task_registry.py`](examples/baselines/ppo/task_registry.py) — the single source of truth imported by all modules.
 
@@ -25,7 +23,7 @@ Task definitions live in [`examples/baselines/ppo/task_registry.py`](examples/ba
 
 **Entry script:** [`examples/baselines/ppo/ppo_multitask.py`](examples/baselines/ppo/ppo_multitask.py)
 
-Trains a Mixture-of-Experts (MoE) actor-critic (`MultiTaskAgent`) across 4 parallel ManiSkillVectorEnv instances. Each task gets its own projection layer and expert trunk; the gate routes observations to the correct expert.
+Trains a Mixture-of-Experts (MoE) actor-critic (`MultiTaskAgent`) across 2 parallel ManiSkillVectorEnv instances. Each task gets its own expert trunk; the gate routes observations to the correct expert.
 
 **Training:**
 ```bash
@@ -44,7 +42,7 @@ python examples/baselines/ppo/ppo_multitask.py \
 **Warm-start from single-task checkpoints:**
 ```bash
 python examples/baselines/ppo/ppo_multitask.py \
-  --init_expert_ckpts push.pt pick.pt stack.pt peg.pt
+  --init_expert_ckpts stack.pt peg.pt
 ```
 
 ---
@@ -58,7 +56,7 @@ python examples/baselines/ppo/ppo_multitask.py \
 **Collect positive/negative samples (per worker):**
 ```bash
 python criticality/stage1/stage1_collect.py \
-  --task_id 2 \
+  --task_id 0 \
   --checkpoint examples/baselines/ppo/runs/<run>/multitask_final_ckpt.pt \
   --n 2000 --worker_id 0 \
   --pos_dir data/stage1/raw/positive --neg_dir data/stage1/raw/negative
@@ -174,11 +172,11 @@ python training/draw_failure_rates.py
 ## Common Notes & Conventions
 
 - **Backend:** Scripts default to `--sim_backend physx_cpu`. Under `physx_cuda`, `apply_force` requires Torch tensors; under `physx_cpu`, numpy arrays are used. The code contains both paths — maintain both when modifying.
-- **Force semantics:** Unit force vectors are stored and used by the classifier (each component ∈ {-1, -0.8, ..., 1.0}), multiplied by `force_mag` when applied. PushCube uses 2D forces (xy only); all other tasks use 3D.
+- **Force semantics:** Unit force vectors are stored and used by the classifier (each component ∈ {-1, -0.8, ..., 1.0}), multiplied by `force_mag` when applied. All remaining tasks use 3D forces.
 - **Crash labels:** If an episode never triggers `success_once`, it is labeled as a positive sample (crash=1) for the criticality classifier.
 - **Observation dimension:** All modules expect exactly `obs_dim=48` (padded with zeros if the task's native dim is smaller). The MoE agent input is hardcoded to 48; individual task obs_dims are defined in `task_registry.py`.
 - **Importance weights:** The NADE wrapper writes per-step `weight` and per-episode `total_weight` into `info['criticality_info']`. The offline training and evaluation scripts depend on this field — do not break this contract.
-- **Task routing:** All modules use `task_registry.TaskSpec.task_id` (0–3) to route samples to the correct expert / projection. Episode dicts carry `task_id`; legacy files without it are assumed `task_id=0`.
+- **Task routing:** All modules use `task_registry.TaskSpec.task_id` (0–1) to route samples to the correct expert. Episode dicts carry `task_id`; legacy files without it are assumed `task_id=0`.
 
 ---
 

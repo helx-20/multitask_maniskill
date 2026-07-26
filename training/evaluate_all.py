@@ -60,7 +60,7 @@ def main():
                     help='Path to .npy file, directory of .npy, or glob pattern for original policy results')
     args = ap.parse_args()
 
-    short_names = ['push', 'pick', 'stack', 'peg']
+    short_names = ['stack', 'peg']
 
     min_avg_failure_rate = float('inf')
     for dir in sorted(os.listdir(args.root_path)):

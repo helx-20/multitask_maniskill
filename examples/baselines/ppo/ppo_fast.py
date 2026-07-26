@@ -60,7 +60,7 @@ class Args:
     """path to a pretrained checkpoint file to start evaluation/training from"""
 
     # Environment specific arguments
-    env_id: str = "PickCube-v1"
+    env_id: str = "StackCube-v1"
     """the id of the environment"""
     env_vectorization: str = "gpu"
     """the type of environment vectorization to use"""

@@ -1,20 +1,20 @@
-"""Unified multi-task PPO for the four ManiSkill tabletop tasks.
+"""Unified multi-task PPO for the two ManiSkill tabletop tasks.
 
-4 parallel ManiSkillVectorEnv instances (PushCube / PickCube / StackCube /
-PegInsertionSide) feed one MoE actor-critic (MultiTaskAgent). Per-task rollout
-buffers; PPO update iterates epoch x task x minibatch so each task's samples
-are routed through the right per-task projection.
+2 parallel ManiSkillVectorEnv instances (StackCube / PegInsertionSide) feed one
+MoE actor-critic (MultiTaskAgent). Per-task rollout buffers; PPO update
+iterates epoch x task x minibatch so each task's samples are routed through the
+right per-task projection.
 
 Expert trunks can be warm-started from per-task single-task PPO ckpts via
---init_expert_ckpts (one path per task, in TASKS order: push, pick, stack,
-peg). The first layer of the old ckpts is dropped (replaced by per-task
-Proj_i); only the four trunk Linears are copied.
+--init_expert_ckpts (one path per task, in TASKS order: stack, peg). The first
+layer of the old ckpts is dropped (replaced by per-task Proj_i); only the four
+trunk Linears are copied.
 
 Usage:
   python ppo_multitask.py \
     --num_envs_per_task=256 --num_eval_envs_per_task=32 \
     --total_timesteps=4_000_000 --eval_freq=10 \
-    --init_expert_ckpts push.pt pick.pt stack.pt peg.pt
+    --init_expert_ckpts stack.pt peg.pt
 """
 
 from __future__ import annotations
@@ -65,8 +65,8 @@ class Args:
     """Multi-task ckpt to load (full MultiTaskAgent state_dict)."""
 
     # ---- expert warm-start ----
-    init_expert_ckpts: List[str] = field(default_factory=list) # field(default_factory=lambda: ['/home/linxuan/Embodied/push_cube/examples/baselines/ppo/runs/PushCube-v1__ppo__1__1780301489/final_ckpt.pt', '/home/linxuan/Embodied/pick_cube/examples/baselines/ppo/runs/PickCube-v1__ppo__1__1780321332/final_ckpt.pt', '/home/linxuan/Embodied/stack_cube/examples/baselines/ppo/runs/StackCube-v1__ppo__1__1780033432/final_ckpt.pt', '/home/linxuan/Embodied/insert_tube/examples/baselines/ppo/runs/PegInsertionSide-v1__ppo__1__1780488894/final_ckpt.pt'])
-    """One path per task in TASKS order (push, pick, stack, peg). Empty list
+    init_expert_ckpts: List[str] = field(default_factory=list)
+    """One path per task in TASKS order (stack, peg). Empty list
     or empty string disables. Use 'none' or '' at a position to skip a task."""
 
     # ---- env / training ----
@@ -88,8 +88,7 @@ class Args:
     to disable disturbance for all tasks."""
     disturb_prob: float = 1.0
     disturb_xy_only: bool = False
-    """Force PushCube to xy-only is implicit (force_dim=2); this flag zeros z
-    for the 3D tasks too if you want."""
+    """When True, zeros the z-component of force even for 3D-force tasks."""
 
     control_mode: Optional[str] = "pd_joint_delta_pos"
     anneal_lr: bool = False
@@ -159,7 +158,7 @@ def apply_disturbance(force_actor, n_envs: int, force_dim: int,
     """Apply a random per-env force on `force_actor`. Mirrors single-task
     ppo.py exactly: discrete units of 0.2 in [-1, 1]^d, scaled by `mag`.
 
-    force_dim==2: 2D force (PushCube). 3D tasks may also be forced to xy-only
+    force_dim==3: 3D force. May also be forced to xy-only
     via xy_only flag."""
     if mag <= 0:
         return
@@ -311,7 +310,7 @@ def main():
         if len(args.init_expert_ckpts) != num_tasks():
             raise ValueError(
                 f"--init_expert_ckpts must have {num_tasks()} entries (one per task, in "
-                f"TASKS order push/pick/stack/peg). Got {len(args.init_expert_ckpts)}."
+                f"TASKS order stack/peg). Got {len(args.init_expert_ckpts)}."
             )
         ckpt_paths = [None if (p == "" or p.lower() == "none") else p
                       for p in args.init_expert_ckpts]

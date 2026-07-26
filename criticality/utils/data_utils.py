@@ -2,7 +2,7 @@
 
 `stage1_collect.py` now writes each rollout as a dict with:
     {
-      "task_id":   int,                  # 0/1/2/3 == push/pick/stack/peg
+      "task_id":   int,                  # 0/1 == stack/peg
       "env_id":    str,
       "force_dim": 2 or 3,
       "obs":       [obs_0, obs_1, ...],  # obs_t has shape (obs_dim_i,)
@@ -17,8 +17,7 @@ For the MoE classifier we want per-step (input_i, label, task_id) where
     label   = 1 if the step belongs to a crash episode, else 0
 
 Old single-task npys without a "task_id" field are assumed task_id=0
-(PushCube). Old files with 3-dim force on a 2D-force task have the trailing
-zero column dropped automatically.
+(StackCube).
 """
 
 import os

@@ -52,7 +52,7 @@ class Args:
     """the environment rendering mode"""
 
     # Algorithm specific arguments
-    env_id: str = "PickCube-v1"
+    env_id: str = "StackCube-v1"
     """the id of the environment"""
     include_state: bool = True
     """whether to include state information in observations"""
