@@ -221,7 +221,7 @@ def train_offline(args):
         return
 
     # parse per-task loss weights: only accept comma-separated floats by task_id order
-    task_loss_weights = args.task_loss_weights if args.task_loss_weights else [1.0, 1.0]
+    task_loss_weights = args.task_loss_weights if args.task_loss_weights else [1.0, 1.0, 1.0, 1.0]
 
     # normalize weights to mean=1.0 to keep loss scale stable
     vals_list = task_loss_weights
@@ -355,7 +355,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_grad_norm", type=float, default=1.0)
     parser.add_argument("--save_freq", type=int, default=3)
     parser.add_argument("--freeze_gate", default=False)
-    parser.add_argument("--task_loss_weights", type=float, nargs='+', default=[1.0, 1.0],
+    parser.add_argument("--task_loss_weights", type=float, nargs='+', default=[1.0, 1.0, 1.0, 1.0],
                         help="Comma-separated list of floats by task_id order, e.g. [1.0, 1.0]. "
                              "Will be normalized to mean=1.0.")
     parser.add_argument("--log_std", default=None)

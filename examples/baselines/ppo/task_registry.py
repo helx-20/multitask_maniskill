@@ -1,4 +1,4 @@
-"""Single source of truth for the two ManiSkill tasks used by the unified
+"""Single source of truth for the four ManiSkill tasks used by the unified
 multi-task PPO + criticality pipeline.
 
 Anything else (ppo_multitask, NADE wrapper, stage1_collect, criticality model)
@@ -18,7 +18,7 @@ class TaskSpec:
     env_id: str
     short_name: str
     obs_dim: Optional[int]      # state obs dim (filled at runtime if None)
-    force_dim: int              # 3 for 3D-force tasks
+    force_dim: int              # 2 for PushCube (xy only), 3 for 3D-force tasks
     xy_only: bool               # equivalent to force_dim == 2; explicit flag for readability
     force_actor_attr: str       # attribute name on env.unwrapped that receives apply_force
     stage1_force_actor_attr: str
@@ -27,7 +27,8 @@ class TaskSpec:
     # ↑ stage1_collect.py historically used a different actor for StackCube
     #   (cubeA) than the NADE wrapper (peg). We keep both names so that
     #   behaviour is preserved exactly. For all other tasks the two are the
-    #   same.
+    #   same. TODO: confirm with user whether StackCube's mismatch is
+    #   intentional; if not, set stage1_force_actor_attr = force_actor_attr.
 
     @property
     def grid_size_per_dim(self) -> int:
@@ -88,6 +89,28 @@ TASKS: List[TaskSpec] = [
         force_actor_attr="peg",
         stage1_force_actor_attr="peg",
         force_mag=6.0,
+    ),
+    TaskSpec(
+        task_id=2,
+        env_id="PushCube-v1",
+        short_name="push",
+        obs_dim=35,
+        force_dim=2,
+        xy_only=True,
+        force_actor_attr="obj",
+        stage1_force_actor_attr="obj",
+        force_mag=1.0,
+    ),
+    TaskSpec(
+        task_id=3,
+        env_id="PickCube-v1",
+        short_name="pick",
+        obs_dim=42,
+        force_dim=3,
+        xy_only=False,
+        force_actor_attr="cube",
+        stage1_force_actor_attr="cube",
+        force_mag=1.0,
     ),
 ]
 
