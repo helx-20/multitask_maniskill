@@ -38,7 +38,7 @@ from torch.distributions.normal import Normal
 HIDDEN = 256
 EXPERT_TRUNK = (256, 512, 512, 256)
 ACTION_OUT_STD = 0.01 * np.sqrt(2)
-NUM_EXPERTS_DEFAULT = 2
+NUM_EXPERTS_DEFAULT = 4
 GATE_HIDDEN = 256
 
 
@@ -127,7 +127,7 @@ class MultiTaskAgent(nn.Module):
 
     input_dim     : unified observation dimension (padded to maximum across tasks)
     action_dim    : Panda pd_joint_delta_pos = 8 for all ManiSkill tasks
-    num_experts   : default 2 (== number of tasks)
+    num_experts   : default 4
     """
 
     def __init__(self, input_dim: int, action_dim: int,

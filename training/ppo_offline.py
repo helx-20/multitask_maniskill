@@ -338,11 +338,11 @@ def train_offline(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, nargs='+',
-                        default=["/mnt/mnt1/linxuan/multitask_maniskill_data/data/training/random"],
+                        default=["/mnt/mnt1/linxuan/multitask_maniskill_data/data/training/random_round2"],
                         help="One or more directories, each containing training_<short>_<wid>.npy files")
     parser.add_argument("--initial_ckpt", type=str, default="examples/baselines/ppo/runs/multitask__ppo_multitask__1__1780644413/multitask_final_ckpt.pt", help="Full MultiTaskAgent state_dict")
     # parser.add_argument("--initial_ckpt", type=str, default="training/models/round7/offline_model_best.pt")
-    parser.add_argument("--out_dir", type=str, default="./training/models/random")
+    parser.add_argument("--out_dir", type=str, default="./training/models/random_round2")
 
     parser.add_argument("--device", type=str, default="cuda:0")
     parser.add_argument("--epochs", type=int, default=50)
